@@ -1,0 +1,2 @@
+# GitVersion 6 - semver from conventional-commit history (GitHub Flow).
+workflow: GitHubFlow/v1

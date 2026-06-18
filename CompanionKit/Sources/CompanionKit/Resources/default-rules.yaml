@@ -1,0 +1,96 @@
+# Claude Companion — default blacklist (shipped). See
+# docs/specs/features/default-blacklist.reference.md for rationale + sources.
+# Two tiers: deny = hard block (catastrophic/irreversible); ask = prompt the human.
+# Everything not listed auto-allows. Edit this file; the app recompiles it for the hook.
+# macOS-targeted. Pattern-blocking is accident-prevention, not a security boundary.
+
+auto_accept: true
+
+deny:
+  # Filesystem destruction
+  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+|--[a-z-]+\s+)*-?[rR][fF]?\s+(?:-[a-zA-Z]*\s+)*(?:/|~|/\*|\$HOME|\$\{HOME\}|"\$HOME"|\$\w+/?\s*$|--no-preserve-root)' }
+  - { tool: Bash, command_regex: '\brm\b[^|;&]*--no-preserve-root' }
+  - { tool: Bash, command_regex: '\bfind\s+(?:/|~|\$HOME|/\s)[^|]*\s-(?:delete|exec\s+rm)\b' }
+  - { tool: Bash, command_regex: '\bmv\s+(?:[^>|]*\s)?(?:~|/|\$HOME|/\*)\s+/dev/null\b' }
+  # Disk / partition destruction
+  - { tool: Bash, command_regex: '\bdd\b[^|;&]*\bof=\s*/dev/(?:r?disk\d|sd[a-z]|nvme\d|hd[a-z])' }
+  - { tool: Bash, command_regex: '\b(?:mkfs(?:\.\w+)?|newfs(?:_\w+)?)\b' }
+  - { tool: Bash, command_regex: '\bdiskutil\s+(?:[a-zA-Z]+\s+)?(?:eraseDisk|eraseVolume|reformat|zeroDisk|randomDisk|secureErase|partitionDisk|apfs\s+(?:delete|erase|resize))\b' }
+  - { tool: Bash, command_regex: '>\s*/dev/(?:r?disk\d|sd[a-z]|nvme\d|hd[a-z])\b' }
+  # Fork bomb
+  - { tool: Bash, command_regex: '\(\s*\)\s*\{[^}]*\|[^}]*&[^}]*\}\s*;\s*\S+' }
+  - { tool: Bash, command_regex: ':\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:' }
+  # Privilege-policy edits
+  - { tool: Bash, command_regex: '/etc/sudoers(?:\.d)?\b' }
+  # System control
+  - { tool: Bash, command_regex: '\bkill\s+-(?:9|KILL|s\s*(?:9|KILL))\s+(?:-1|1)\b' }
+  - { tool: Bash, command_regex: '\b(?:shutdown|reboot|halt|poweroff)\b' }
+  # Permissions catastrophes
+  - { tool: Bash, command_regex: '\bchmod\s+(?:-[a-zA-Z]*\s+)*0?777\s+(?:-[a-zA-Z]*\s+)*(?:/|~|\$HOME|/\*)\s*$' }
+  - { tool: Bash, command_regex: '\bchmod\s+(?:-[a-zA-Z]*\s+)*-R\s+\S+\s+(?:/|~|\$HOME|/\*)\s*$' }
+  - { tool: Bash, command_regex: '\bchown\s+(?:-[a-zA-Z]*\s+)*-R\s+\S+\s+(?:/|~|\$HOME|/\*)\s*$' }
+  # Writes into system trees
+  - { tool: Bash, command_regex: '>>?\s*/(?:etc|usr|bin|sbin|System|Library)(?:/|\s|$)' }
+  # Pipe-to-shell / RCE
+  - { tool: Bash, command_regex: '\b(?:curl|wget|fetch)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k|fi|t?c)?sh\b' }
+  - { tool: Bash, command_regex: '\b(?:ba|z|da|k|c)?sh\b\s+<\(\s*(?:curl|wget|fetch)\b' }
+  - { tool: Bash, command_regex: '\b(?:base64\s+(?:-[dD]|--decode)|xxd\s+-r|openssl\s+(?:base64|enc)\b[^|]*-d)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b' }
+  - { tool: Bash, command_regex: '\beval\b[^|;&]*\$\(\s*(?:curl|wget|fetch)\b' }
+  - { tool: Bash, command_regex: '/dev/(?:tcp|udp)/' }
+  # Write-tool denies (path-based)
+  - { tool: Write, path_glob: '/etc/**' }
+  - { tool: Write, path_glob: '/System/**' }
+  - { tool: Write, path_glob: '/usr/**' }
+  - { tool: Write, path_glob: '{/,~/}Library/Launch{Agents,Daemons}/**' }
+  - { tool: Write, path_glob: '/private/etc/**' }
+
+ask:
+  # Privilege escalation
+  - { tool: Bash, command_regex: '^\s*(?:sudo|doas)\b' }
+  - { tool: Bash, command_regex: '^\s*su\b(?:\s+-|\s+\w+|\s*$)' }
+  # Recursive force-delete of project paths (root/home already denied)
+  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+)*-?[rR][fF]?\b(?![^|;&]*(?:/|~|\$HOME|--no-preserve-root))' }
+  # Remote / irreversible VCS
+  - { tool: Bash, command_regex: '\bgit\s+push\b(?:[^|;&]*\s)?(?:-f\b|--force(?!-with-lease))' }
+  - { tool: Bash, command_regex: '\bgit\s+push\b' }
+  - { tool: Bash, command_regex: '\bgit\s+reset\s+(?:[^|;&]*\s)?--hard\b' }
+  - { tool: Bash, command_regex: '\bgit\s+clean\b[^|;&]*-[a-z]*f[a-z]*\b' }
+  - { tool: Bash, command_regex: '\bgit\s+(?:filter-branch|filter-repo)\b' }
+  - { tool: Bash, command_regex: '\bgit\s+rebase\b[^|;&]*(?:-i|--interactive|--onto)\b' }
+  - { tool: Bash, command_regex: '\bgit\s+update-ref\s+-d\b|\bgit\s+reflog\s+(?:expire|delete)\b' }
+  # Publishing / releasing
+  - { tool: Bash, command_regex: '\b(?:npm|pnpm|yarn|bun)\s+publish\b' }
+  - { tool: Bash, command_regex: '\bcargo\s+publish\b' }
+  - { tool: Bash, command_regex: '\b(?:twine\s+upload|python\s+-m\s+twine\s+upload|poetry\s+publish|flit\s+publish)\b' }
+  - { tool: Bash, command_regex: '\bgem\s+push\b' }
+  - { tool: Bash, command_regex: '\bgh\s+release\s+(?:create|delete|upload)\b' }
+  - { tool: Bash, command_regex: '\bdocker\s+(?:image\s+)?push\b' }
+  # Cloud destructive
+  - { tool: Bash, command_regex: '\baws\s+\S+\s+(?:delete|remove|terminate|deregister|purge|destroy)[\w-]*\b' }
+  - { tool: Bash, command_regex: '\baws\s+s3\s+rb\b|\baws\s+s3(?:api)?\s+(?:rm|delete-object|delete-bucket)\b' }
+  - { tool: Bash, command_regex: '\bgcloud\s+[\w.-]+(?:\s+[\w.-]+)*\s+delete\b' }
+  - { tool: Bash, command_regex: '\baz\s+[\w.-]+(?:\s+[\w.-]+)*\s+delete\b' }
+  - { tool: Bash, command_regex: '\bkubectl\s+delete\b' }
+  - { tool: Bash, command_regex: '\bkubectl\b[^|;&]*\bdrain\b|\bkubectl\s+(?:cordon|taint)\b' }
+  - { tool: Bash, command_regex: '\bterraform\s+(?:destroy|apply)\b' }
+  - { tool: Bash, command_regex: '\bhelm\s+(?:delete|uninstall)\b' }
+  # Secrets reading / exfiltration
+  - { tool: Bash, command_regex: '(?:\.ssh/(?:id_[a-z0-9]+|.*_rsa|.*\.pem)\b|\.aws/credentials\b|\.config/gcloud\b|\.kube/config\b|\.netrc\b|\.npmrc\b|\.pypirc\b|\.docker/config\.json)' }
+  - { tool: Bash, command_regex: '\bsecurity\s+(?:dump-keychain|find-(?:generic|internet)-password|export)\b' }
+  - { tool: Bash, command_regex: '\b(?:cat|less|more|head|tail|grep|rg|strings|xxd|base64)\b[^|;&]*\.env(?:\.\w+)?\b' }
+  - { tool: Bash, command_regex: '\b(?:printenv|env|set|export)\b[^|;&]*\|\s*(?:curl|wget|nc|ncat|netcat|socat)\b' }
+  - { tool: Bash, command_regex: '\b(?:cat|tail|head|grep)\b[^|]*(?:\.env|credentials|id_rsa|\.pem|secret|token|\.netrc)[^|]*\|\s*(?:curl|wget|nc|ncat|netcat|socat)\b' }
+  - { tool: Bash, command_regex: '\b(?:curl|wget)\b[^|;&]*(?:-d|--data|-T|--upload-file|-F|--form)\b[^|;&]*(?:\$\(|\$\{?(?:[A-Z_]*(?:TOKEN|KEY|SECRET|PASS|CRED))|\.env|id_rsa|credentials)' }
+  - { tool: Bash, command_regex: '\b(?:nc|ncat|netcat|socat)\b[^|;&]*<\s*(?:\S*(?:\.env|id_rsa|\.pem|credentials|\.netrc))' }
+  # Persistence
+  - { tool: Bash, command_regex: '\bcrontab\b(?:\s+-|\s+\S)' }
+  - { tool: Bash, command_regex: '\blaunchctl\s+(?:load|bootstrap|enable|submit)\b' }
+  - { tool: Bash, command_regex: '>>?\s*~?/?[^|;&]*/?(?:\.zshrc|\.bashrc|\.bash_profile|\.profile|\.zprofile|\.zshenv)\b' }
+  - { tool: Bash, command_regex: '>>?\s*[^|;&]*/(?:LaunchAgents|LaunchDaemons)/[^|;&]*\.plist\b' }
+  # Database destruction
+  - { tool: Bash, command_regex: '(?i)\b(?:drop\s+(?:database|schema|table)|truncate\s+table)\b' }
+  - { tool: Bash, command_regex: '(?i)\bdelete\s+from\s+\w+\s*(?:;|$|--)' }
+  - { tool: Bash, command_regex: '\b(?:psql|mysql|mariadb|mongosh|redis-cli)\b[^|;&]*-(?:c|e|-eval|-command)\b' }
+  - { tool: Bash, command_regex: '\b(?:dropdb|mysqladmin\s+drop)\b' }
+  # Mass process kill
+  - { tool: Bash, command_regex: '\bkillall\b' }

@@ -1,0 +1,34 @@
+# Release on push to main - delegates the whole build→sign→package→GitHub Release to the
+# reusable Swift release workflow (versioning via michielvha/gitversion-tag-action inside it).
+# See vhco-pro/swift-release-action.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.gitignore'
+      - 'README.md'
+      - 'LICENSE'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  release:
+    permissions:
+      contents: write   # tag + create the GitHub Release
+    uses: vhco-pro/swift-release-action/.github/workflows/release.yml@v1
+    with:
+      app-name: ClaudeCompanion
+      scheme: ClaudeCompanion
+      package-path: CompanionKit
+      helper-products: companion-hook
+      helper-package-path: CompanionKit
+      entitlements: ClaudeCompanion/ClaudeCompanion.entitlements
+      xcodegen: true
+      gitversion-config: gitversion.yml
+      tag-prefix: v
+      runner: macos-26   # Tahoe → ships Xcode 26, needed to compile the AppIcon.icon
+    secrets: inherit

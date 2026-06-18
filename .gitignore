@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+DerivedData/
+# XcodeGen output — regenerated from project.yml
+ClaudeCompanion.xcodeproj/
+.swiftpm/
+dist/
+*.xcuserstate
