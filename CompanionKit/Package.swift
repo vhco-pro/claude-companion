@@ -20,8 +20,8 @@ let package = Package(
         .executable(name: "companion-hook", targets: ["companion-hook"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.3"),
-        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.0"),
+        .package(url: "https://github.com/jpsim/Yams.git", from: "6.2.2"),
     ],
     targets: [
         .target(name: "CompanionCore"),
