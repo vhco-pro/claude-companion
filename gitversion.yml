@@ -1,2 +1,31 @@
-# GitVersion 6 - semver from conventional-commit history (GitHub Flow).
+# GitVersion config for the vhco-pro/swift-release-action consumer (read by
+# michielvha/gitversion-tag-action at the repo root).
+#
+# GitHubFlow + `increment: None` + ContinuousDeployment: the version only bumps when a
+# conventional-commit message dictates it (feat:/fix:/etc.); chore/docs/ci/style/test do NOT
+# bump. A no-bump push resolves to the already-tagged version, so the release step is skipped
+# (the tag already exists, so `git tag` fails - that is the release gate).
 workflow: GitHubFlow/v1
+next-version: 0.1.0
+tag-prefix: 'v'
+semantic-version-format: Loose
+
+major-version-bump-message: '(BREAKING CHANGE|^.+!:)'
+minor-version-bump-message: '^feat(\([^)]+\))?:\s'
+patch-version-bump-message: '^(fix|enhancement|perf|refactor|revert)(\([^)]+\))?:\s'
+no-bump-message: '^(chore|docs|style|test|ci)(\([^)]+\))?:\s'
+commit-message-incrementing: Enabled
+
+strategies:
+  - Fallback
+  - MergeMessage
+  - TaggedCommit
+  - TrackReleaseBranches
+  - VersionInBranchName
+
+branches:
+  main:
+    regex: ^master$|^main$
+    is-main-branch: true
+    increment: None
+    mode: ContinuousDeployment
