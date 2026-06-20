@@ -5,7 +5,18 @@ limits + cost, and - the headline - **auto-approves tool calls except a shared b
 killing the endless "type 1 to continue" loop. Anything not on the blacklist runs without a
 prompt; catastrophic commands are hard-blocked, risky ones defer to Claude Code's native prompt.
 
-> Status: **early build (foundation phase).** Specs + plans live in [`docs/`](docs/).
+> Status: **v0.1.0 released.** Specs + plans live in [`docs/`](docs/).
+
+## Install
+
+```sh
+brew install --cask vhco-pro/tap/claude-companion
+```
+
+The app is ad-hoc signed (not notarized), so approve it once on first launch:
+`xattr -dr com.apple.quarantine "/Applications/ClaudeCompanion.app"` (or right-click in Finder
+and choose Open). Then click **Install hook into Claude Code** in the popover and reload your
+editor window to activate the auto-approve gate.
 
 ## Architecture (lean, daemon-free)
 
