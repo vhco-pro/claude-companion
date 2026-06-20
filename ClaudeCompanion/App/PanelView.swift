@@ -192,6 +192,8 @@ struct PanelView: View {
     private var footer: some View {
         HStack {
             Button("Refresh") { model.refresh(); model.refreshSessions() }
+            Button("Config") { model.openConfigFolder() }
+                .help("Open the config folder (rules, blocklist, audit) in Finder")
             Spacer()
             Button("Quit") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
         }

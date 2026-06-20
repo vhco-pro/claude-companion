@@ -287,6 +287,12 @@ public final class AppModel {
         SettingsInstaller(hookCommand: stagedHookPath)
     }
 
+    /// Reveal the shared config dir (rules.yaml, blocklist, audit.ndjson, config.yaml) in Finder
+    /// for power users who want to hand-edit. See menubar-ui / v0.2 B3.
+    public func openConfigFolder() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: Paths.configDir))
+    }
+
     private func stageHook() {
         let embedded = Bundle.main.bundlePath + "/Contents/Helpers/companion-hook"
         try? FileManager.default.createDirectory(atPath: Paths.configDir, withIntermediateDirectories: true)
