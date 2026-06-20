@@ -9,7 +9,7 @@ permissions: {}
 
 jobs:
   test:
-    runs-on: macos-14
+    runs-on: macos-26   # Xcode 26 / Swift 6.x - required to resolve GRDB 7 (swift-tools 6.0)
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3

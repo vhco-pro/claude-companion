@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 // CompanionKit - the app's code as a local Swift package, the single source of truth for
@@ -20,8 +20,8 @@ let package = Package(
         .executable(name: "companion-hook", targets: ["companion-hook"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.3"),
-        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/jpsim/Yams.git", from: "6.0.0"),
     ],
     targets: [
         .target(name: "CompanionCore"),
@@ -45,5 +45,9 @@ let package = Package(
             name: "CompanionKitTests",
             dependencies: ["CompanionCore", "CompanionKit"]
         ),
-    ]
+    ],
+    // tools-version 6.0 would default our targets to Swift 6 (strict concurrency). Keep our own
+    // code in Swift 5 mode so the GRDB 7 bump is a dependency upgrade, not a concurrency migration.
+    // GRDB/Yams still build in their own declared modes. See dependency-modernization.spec.md.
+    swiftLanguageModes: [.v5]
 )
