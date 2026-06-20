@@ -5,19 +5,22 @@ import Foundation
 /// feeds parsed events to the SessionIngestor. Runs scans on a background queue (existing files
 /// can be large); offsets persist so a restart is incremental, not a full re-ingest. Read-only on
 /// ~/.claude.
-public final class JSONLTailer {
+// @unchecked Sendable: all mutable state (`offsets`, `watcher`) is confined to the serial `queue`;
+// scans never run concurrently, so the class is data-race-free by construction. `onUpdate` is a
+// main-actor callback (it touches the @MainActor AppModel).
+public final class JSONLTailer: @unchecked Sendable {
     private let ingestor: SessionIngestor
     private let projectsDir: String
     private let offsetsPath: String
     private var offsets: [String: UInt64] = [:]
     private var watcher: FileWatcher?
     private let queue = DispatchQueue(label: "pro.vhco.companion.jsonl")
-    private let onUpdate: () -> Void
+    private let onUpdate: @MainActor @Sendable () -> Void
 
     public init(ingestor: SessionIngestor,
                 projectsDir: String = ("~/.claude/projects" as NSString).expandingTildeInPath,
                 offsetsPath: String = Paths.configDir + "/jsonl-offsets.json",
-                onUpdate: @escaping () -> Void = {}) {
+                onUpdate: @escaping @MainActor @Sendable () -> Void = {}) {
         self.ingestor = ingestor
         self.projectsDir = projectsDir
         self.offsetsPath = offsetsPath
@@ -35,7 +38,7 @@ public final class JSONLTailer {
 
     private func scanAndNotify() {
         scanOnce()
-        DispatchQueue.main.async { self.onUpdate() }
+        Task { @MainActor in self.onUpdate() }
     }
 
     /// Synchronous scan of all session files (used directly by tests).
@@ -80,10 +83,13 @@ public final class JSONLTailer {
 
     // MARK: timestamps
 
-    private static let isoFractional: ISO8601DateFormatter = {
+    // Configured once, then used read-only via date(from:), which ISO8601DateFormatter supports
+    // concurrently. nonisolated(unsafe) asserts that for Swift 6 strict-concurrency (avoids
+    // re-allocating an expensive formatter per parse).
+    nonisolated(unsafe) private static let isoFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
     }()
-    private static let isoPlain = ISO8601DateFormatter()
+    nonisolated(unsafe) private static let isoPlain = ISO8601DateFormatter()
 
     static func parseTimestamp(_ s: String) -> Date? {
         isoFractional.date(from: s) ?? isoPlain.date(from: s)

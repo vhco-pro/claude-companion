@@ -8,6 +8,7 @@ import Observation
 /// The running app's in-process state. Wires the SQLite store, audit ingestor, config
 /// hot-reload, and rules compilation together. SwiftUI observes it. There is no daemon: this
 /// object IS the long-lived process.
+@MainActor
 @Observable
 public final class AppModel {
     public private(set) var config: AppConfig
@@ -136,13 +137,17 @@ public final class AppModel {
 
         usage = loadUsage()   // last-good across relaunches so the bars don't blank on a 429
         refreshUsageNow()
+        // These callbacks fire off the main actor (timers, file-watch, hot-key, wake/network);
+        // AppModel is @MainActor, so each hops back to the main actor before touching state.
         usageTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
-            self?.refreshUsageNow()
+            Task { @MainActor in self?.refreshUsageNow() }
         }
-        watcher = FileWatcher(paths: [Paths.configDir]) { [weak self] in self?.onConfigDirChanged() }
+        watcher = FileWatcher(paths: [Paths.configDir]) { [weak self] in
+            Task { @MainActor in self?.onConfigDirChanged() }
+        }
         watcher?.start()
         hotkey = GlobalHotkey { [weak self] in
-            DispatchQueue.main.async { self?.toggleAutoAccept() }
+            Task { @MainActor in self?.toggleAutoAccept() }
         }
         hotkey?.register() // ⌃⌥⌘A
 
@@ -153,20 +158,23 @@ public final class AppModel {
             refreshBlocklistNow()
             let minutes = max(5, config.blocklist.refreshMinutes)
             blocklistTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(minutes * 60), repeats: true) { [weak self] _ in
-                self?.refreshBlocklistNow()
+                Task { @MainActor in self?.refreshBlocklistNow() }
             }
             // Re-fetch on wake-from-sleep and when the network comes back, so a closed laptop
             // doesn't sit on a stale list for up to a full interval.
             NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-            ) { [weak self] _ in self?.refreshBlocklistNow() }
+            ) { [weak self] _ in Task { @MainActor in self?.refreshBlocklistNow() } }
             netMonitor.pathUpdateHandler = { [weak self] path in
-                guard let self else { return }
-                if path.status == .satisfied, self.wasOffline {
-                    self.wasOffline = false
-                    DispatchQueue.main.async { self.refreshBlocklistNow() }
-                } else if path.status != .satisfied {
-                    self.wasOffline = true
+                let satisfied = path.status == .satisfied   // capture Sendable value, then hop to main
+                Task { @MainActor in
+                    guard let self else { return }
+                    if satisfied, self.wasOffline {
+                        self.wasOffline = false
+                        self.refreshBlocklistNow()
+                    } else if !satisfied {
+                        self.wasOffline = true
+                    }
                 }
             }
             netMonitor.start(queue: DispatchQueue(label: "pro.vhco.companion.net"))

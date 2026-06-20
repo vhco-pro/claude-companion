@@ -3,7 +3,7 @@ import Foundation
 
 /// Downloads the configured threat feeds, parses them, and compiles `blocklist.db`. On total
 /// failure it leaves the existing file untouched (the hook keeps using the last-good blocklist).
-public final class BlocklistFetcher {
+public final class BlocklistFetcher: Sendable {   // no stored state -> safe to share across actors
     public init() {}
 
     public func refresh(config: BlocklistConfig, outPath: String = Paths.blocklist) async -> (count: Int, errors: [String]) {

@@ -46,8 +46,7 @@ let package = Package(
             dependencies: ["CompanionCore", "CompanionKit"]
         ),
     ],
-    // tools-version 6.0 would default our targets to Swift 6 (strict concurrency). Keep our own
-    // code in Swift 5 mode so the GRDB 7 bump is a dependency upgrade, not a concurrency migration.
-    // GRDB/Yams still build in their own declared modes. See dependency-modernization.spec.md.
-    swiftLanguageModes: [.v5]
+    // Swift 6 language mode: complete strict-concurrency checking on our own code.
+    // See swift6-language-mode.spec.md.
+    swiftLanguageModes: [.v6]
 )

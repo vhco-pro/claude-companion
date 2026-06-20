@@ -30,7 +30,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: ClaudeCompanion/Info.plist
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        SWIFT_VERSION: "5"
+        SWIFT_VERSION: "6"
         CODE_SIGN_ENTITLEMENTS: ClaudeCompanion/ClaudeCompanion.entitlements
     dependencies:
       - package: CompanionKit
