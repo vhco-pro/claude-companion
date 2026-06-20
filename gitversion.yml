@@ -6,7 +6,7 @@
 # bump. A no-bump push resolves to the already-tagged version, so the release step is skipped
 # (the tag already exists, so `git tag` fails - that is the release gate).
 workflow: GitHubFlow/v1
-next-version: 0.1.0
+next-version: 0.0.0
 tag-prefix: 'v'
 semantic-version-format: Loose
 
