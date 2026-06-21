@@ -157,7 +157,15 @@ struct PanelView: View {
     private func sessionDetail(_ s: SessionSummary) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             if let p = s.projectPath {
-                Text(p).lineLimit(1).truncationMode(.middle).foregroundStyle(.tertiary)
+                // Clickable: reveals the working directory in Finder. Styled as a button but
+                // kept visually subtle (it's a path, not the headline repo link above).
+                Button { model.revealInFinder(p) } label: {
+                    Label(p, systemImage: "folder")
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+                .help("Reveal \(p) in Finder")
             }
             if let url = s.repoURL {
                 // Render as an obvious hyperlink: git-branch glyph, link-colored + underlined

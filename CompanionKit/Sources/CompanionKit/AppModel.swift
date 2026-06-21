@@ -301,6 +301,13 @@ public final class AppModel {
         NSWorkspace.shared.open(URL(fileURLWithPath: Paths.configDir))
     }
 
+    /// Reveal a session's working directory in Finder (selected in its parent), so you can jump
+    /// from a session straight to its project folder. No-op if the path no longer exists.
+    public func revealInFinder(_ path: String) {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
     private func stageHook() {
         let embedded = Bundle.main.bundlePath + "/Contents/Helpers/companion-hook"
         try? FileManager.default.createDirectory(atPath: Paths.configDir, withIntermediateDirectories: true)

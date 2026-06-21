@@ -21,6 +21,12 @@ In the **expanded session detail** (B2), next to the full project path: a small 
 the repo's `owner/name` (or host + path) rendered as a link. Click → `NSWorkspace.open(url)`.
 Hidden cleanly when the cwd isn't a git repo or has no parseable remote.
 
+**Local sibling - reveal cwd in Finder.** The full project path shown above the repo link is
+itself a button: click → `NSWorkspace.activateFileViewerSelecting` reveals the working directory
+in Finder (selected in its parent). Always available for local sessions whose cwd still exists (no
+git remote required), so it complements the web link rather than depending on it. No-op if the
+path is gone (e.g. a deleted/remote cwd). Shipped v0.1.
+
 ## How we get the remote
 
 - **Local sessions:** resolve the remote at **ingest time** (when the session's `cwd` is known),
@@ -78,6 +84,8 @@ credentials (`user@`, `https://token@`), lowercase the host. Known hosts:
 - [ ] The remote is resolved at ingest and cached on the session - no `git`/shell call on render.
 - [ ] (When [remote-ssh](remote-ssh.spec.md) lands) remote-SSH sessions also show the link, fed
       by the sync.
+- [x] The session's project path is clickable and reveals the cwd in Finder (local sessions);
+      no-op when the path no longer exists.
 
 ## Open questions
 
