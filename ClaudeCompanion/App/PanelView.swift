@@ -160,11 +160,19 @@ struct PanelView: View {
                 Text(p).lineLimit(1).truncationMode(.middle).foregroundStyle(.tertiary)
             }
             if let url = s.repoURL {
+                // Render as an obvious hyperlink: git-branch glyph, link-colored + underlined
+                // label, and a trailing "opens externally" arrow. Without the explicit .link
+                // tint it inherits the surrounding .secondary gray and reads as plain text.
                 Link(destination: url) {
-                    Label(repoLabel(url), systemImage: "chevron.left.forwardslash.chevron.right")
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text(repoLabel(url)).underline()
+                        Image(systemName: "arrow.up.right").font(.system(size: 8))
+                    }
+                    .lineLimit(1)
                 }
-                .help(url.absoluteString)
+                .foregroundStyle(.link)
+                .help("Open \(url.absoluteString)")
             }
             HStack(spacing: 10) {
                 if let started = s.startedAt { Text("started \(AppModel.relative(started))") }
