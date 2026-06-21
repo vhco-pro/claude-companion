@@ -1,9 +1,13 @@
 # Claude Companion - v0.2 Spec (interactivity, accurate sessions, branding)
 
 > Builds on the shipped v0.1 (foundation · permission-engine · session-monitor · usage-limits ·
-> cost-breakdown · menu-bar UI - all live, 46 tests). v0.1 is functional but **read-only,
-> bare-bones, and its session "active" state is a heuristic.** v0.2 makes it interactive,
-> accurate, and branded. Status: **spec.**
+> cost-breakdown · menu-bar UI - all live, 54 tests, released as a Homebrew cask). v0.1 was
+> functional but **read-only, bare-bones, and its session "active" state is a heuristic.** v0.2
+> makes it interactive, accurate, and branded. Status: **partially landed** - interactivity
+> (expandable session detail), vhco branding (hexagon icon + monochrome template), and the toggle/
+> hook-install/config-folder controls already shipped in the v0.1 release line; **still spec:**
+> accurate session lifecycle (true "open" detection vs the 30-min heuristic), notifications +
+> sparkline, and the B4 "always allow this" override tier.
 
 ## 1. Goals (the v0.1 gaps this closes)
 

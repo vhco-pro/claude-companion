@@ -58,7 +58,7 @@ make test     # swift test (CompanionKit)
 make rebuild  # clean + rebuild + launch
 ```
 
-Requires Xcode 15+ and `xcodegen` (`brew install xcodegen`).
+Requires Xcode 16+ (Swift 6 language mode) and `xcodegen` (`brew install xcodegen`).
 
 ## License
 

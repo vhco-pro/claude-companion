@@ -1,7 +1,7 @@
 # Feature Spec - Foundation (process model, storage, packaging)
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **1** (M0).
-> Status: **spec (revised 2026-06-15 - daemon dropped, lean design).** Owns the shared
+> Status: **shipped v0.1 (revised 2026-06-15 - daemon dropped, lean design).** Owns the shared
 > contracts every other feature spec references.
 
 ## Purpose

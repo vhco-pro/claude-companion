@@ -2,7 +2,7 @@
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **3** (M2).
 > Depends on [permission-engine](permission-engine.spec.md), [foundation](foundation.spec.md).
-> Status: **spec (revised 2026-06-15 after empirical recon).**
+> Status: **shipped v0.1 (revised 2026-06-15 after empirical recon).**
 
 ## ⚠️ Design revision - this feature collapsed
 

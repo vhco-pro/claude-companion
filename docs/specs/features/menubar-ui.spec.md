@@ -2,7 +2,7 @@
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **6** (M0-M3).
 > Depends on [foundation](foundation.spec.md); renders data from session-monitor,
-> usage-limits, permission-engine, approval-ux, cost-breakdown. Status: **spec**.
+> usage-limits, permission-engine, approval-ux, cost-breakdown. Status: **shipped v0.1**.
 
 ## Purpose
 

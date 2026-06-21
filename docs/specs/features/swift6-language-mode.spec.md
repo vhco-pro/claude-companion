@@ -1,7 +1,7 @@
 # Feature Spec - Swift 6 Language Mode (strict concurrency)
 
 > Part of [Claude Companion](../claude-companion-spec.md). Maintenance. Follows
-> [dependency-modernization](dependency-modernization.spec.md). Status: **spec.**
+> [dependency-modernization](dependency-modernization.spec.md). Status: **shipped v0.1.**
 
 ## Purpose
 

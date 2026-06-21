@@ -2,7 +2,7 @@
 
 > Part of [Claude Companion](../claude-companion-spec.md). New (v0.3 candidate). Extends
 > [menubar-ui](menubar-ui.spec.md) B2 session detail + [session-monitor](session-monitor.spec.md).
-> Status: **spec.**
+> Status: **shipped v0.1 (local sessions; remote-session resolution still pending - see [remote-ssh](remote-ssh.spec.md)).**
 
 ## Purpose
 

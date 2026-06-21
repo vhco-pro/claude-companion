@@ -1,7 +1,7 @@
 # Feature Spec - Usage Limits (5h + weekly)
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **5** (M1).
-> Depends on [foundation](foundation.spec.md). Status: **spec (endpoint confirmed 2026-06-15).**
+> Depends on [foundation](foundation.spec.md). Status: **shipped v0.1 (endpoint confirmed 2026-06-15).**
 
 ## Purpose
 

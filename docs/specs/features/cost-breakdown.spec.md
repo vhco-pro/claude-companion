@@ -2,7 +2,7 @@
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **7** (M4).
 > Depends on [foundation](foundation.spec.md), [session-monitor](session-monitor.spec.md).
-> Status: **spec**.
+> Status: **shipped v0.1**.
 
 ## Purpose
 

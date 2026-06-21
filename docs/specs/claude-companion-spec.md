@@ -323,22 +323,23 @@ on top of the minimal foundation.
 
 | Order | Spec | Maps to milestone | Status |
 |---|---|---|---|
-| 1 | [`foundation.spec.md`](features/foundation.spec.md) - menu-bar app + standalone hook, file-based state, SQLite, packaging | M0 | spec |
-| 2 | [`permission-engine.spec.md`](features/permission-engine.spec.md) - hooks, rule engine, audit, kill switch *(headline)* | M2 | spec |
-| 3 | [`approval-ux.spec.md`](features/approval-ux.spec.md) - `ask` → native prompt + passive deny notification | M2 | spec |
-| 4 | [`session-monitor.spec.md`](features/session-monitor.spec.md) - JSONL ingestion → sessions/tokens/tools | M0/M3 | spec |
-| 5 | [`usage-limits.spec.md`](features/usage-limits.spec.md) - OAuth reuse + usage poller | M1 | spec |
-| 6 | [`menubar-ui.spec.md`](features/menubar-ui.spec.md) - status item + dropdown panel | M0-M3 | spec |
-| 7 | [`cost-breakdown.spec.md`](features/cost-breakdown.spec.md) - pricing table + per-project cost | M4 | spec |
+| 1 | [`foundation.spec.md`](features/foundation.spec.md) - menu-bar app + standalone hook, file-based state, SQLite, packaging | M0 | shipped v0.1 |
+| 2 | [`permission-engine.spec.md`](features/permission-engine.spec.md) - hooks, rule engine, audit, kill switch *(headline)* | M2 | shipped v0.1 |
+| 3 | [`approval-ux.spec.md`](features/approval-ux.spec.md) - `ask` → native prompt + passive deny notification | M2 | shipped v0.1 |
+| 4 | [`session-monitor.spec.md`](features/session-monitor.spec.md) - JSONL ingestion → sessions/tokens/tools | M0/M3 | shipped v0.1 |
+| 5 | [`usage-limits.spec.md`](features/usage-limits.spec.md) - OAuth reuse + usage poller | M1 | shipped v0.1 |
+| 6 | [`menubar-ui.spec.md`](features/menubar-ui.spec.md) - status item + dropdown panel | M0-M3 | shipped v0.1 |
+| 7 | [`cost-breakdown.spec.md`](features/cost-breakdown.spec.md) - pricing table + per-project cost | M4 | shipped v0.1 |
+| 8 | [`repo-quicklinks.spec.md`](features/repo-quicklinks.spec.md) - click a session → open its GitHub/GitLab/Azure DevOps repo | v0.1 | shipped v0.1 (local sessions) |
+| 9 | [`dependency-modernization.spec.md`](features/dependency-modernization.spec.md) - GRDB 7, Yams 6, CI on macos-26 | maint | shipped v0.1 |
+| 10 | [`swift6-language-mode.spec.md`](features/swift6-language-mode.spec.md) - Swift 6 strict concurrency | maint | shipped v0.1 |
 | - | [`prompt-injection-detection.spec.md`](features/prompt-injection-detection.spec.md) - content-based injection flagging | post-v0.1 | spec (future) |
-| - | [`repo-quicklinks.spec.md`](features/repo-quicklinks.spec.md) - click a session → open its GitHub/GitLab/Azure DevOps repo | v0.3 | spec (new) |
-| - | [`remote-ssh.spec.md`](features/remote-ssh.spec.md) - gate + full visibility on VSCode Remote-SSH hosts | v0.3 | spec (new, spikes) |
-
-> **v0.1 shipped** (rows 1-7 implemented + verified live, 46 tests). **v0.2** in progress
-> ([`claude-companion-v0.2.spec.md`](claude-companion-v0.2.spec.md) - interactivity, accurate
-> session lifecycle, vhco branding, notifications + sparkline). **v0.3 candidates:** repo
-> quicklinks (small, quick win) + Remote-SSH support (revisits the v0.1 "no remote" non-goal -
-> SSH push/pull, not cloud sync). **Deferred:** v0.2 **B4 "always allow this"** - needs a new
-> `allow` override tier in the engine + an app-owned `rules.local.yaml` write-back; left specced,
-> not built (see v0.2 §4 B4 note).
+| - | [`remote-ssh.spec.md`](features/remote-ssh.spec.md) - gate + full visibility on VSCode Remote-SSH hosts | next | spec (spiked, not built) |
 | - | [`default-blacklist.reference.md`](features/default-blacklist.reference.md) - shipped `rules.yaml` deny/ask defaults (cited) | - | reference |
+
+> **v0.1 shipped and released** (rows 1-10 implemented + verified live, 54 tests, Homebrew cask
+> `brew install --cask vhco-pro/tap/claude-companion`). **Next up:** [`remote-ssh`](features/remote-ssh.spec.md)
+> - gate + full visibility on VSCode Remote-SSH hosts (SSH push/pull, not cloud sync; revisits the
+> v0.1 "no remote" non-goal). repo-quicklinks then extends to remote sessions. **Deferred:** the
+> **B4 "always allow this"** / `allow` override tier - needs a new tier in the engine + an
+> app-owned `rules.local.yaml` write-back; left specced, not built (see v0.2 §4 B4 note).

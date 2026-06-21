@@ -1,7 +1,7 @@
 # Feature Spec - Dependency Modernization (GRDB 7, Yams 6, CI on Xcode 26)
 
 > Part of [Claude Companion](../claude-companion-spec.md). Maintenance. Depends on
-> [foundation](foundation.spec.md). Status: **spec.**
+> [foundation](foundation.spec.md). Status: **shipped v0.1.**
 
 ## Purpose
 

@@ -1,7 +1,7 @@
 # Feature Spec - Permission Engine (the headline)
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **2** (M2).
-> Depends on [foundation](foundation.spec.md). Status: **spec**.
+> Depends on [foundation](foundation.spec.md). Status: **shipped v0.1**.
 
 ## Purpose
 

@@ -1,7 +1,7 @@
 # Feature Spec - Session Monitor (JSONL ingestion)
 
 > Part of [Claude Companion](../claude-companion-spec.md). Build order **4** (M0/M3).
-> Depends on [foundation](foundation.spec.md). Status: **spec**.
+> Depends on [foundation](foundation.spec.md). Status: **shipped v0.1**.
 
 ## Purpose
 
