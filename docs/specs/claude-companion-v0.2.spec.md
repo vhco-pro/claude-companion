@@ -92,7 +92,8 @@ real SwiftUI view tree, so hover (`.help`/`onHover`), `DisclosureGroup`, `List` 
       window table.)*
 - [ ] **B3:** a rule can be toggled/added from the UI; the hook honors it on its next call.
 - [ ] **B4 (deferred - specced, not built, 2026-06-18):** "Always allow this" on a decision
-      creates a working exception without editing YAML.
+      creates a working exception without editing YAML. **Promoted to its own spec:**
+      [`allow-tier.spec.md`](features/allow-tier.spec.md) (full design + acceptance criteria there).
   > **Why deferred:** it needs real new infra in the headline decision path, not just a button -
   > judged not worth bolting on right now. **Design when we do build it:**
   > - Add an **`allow` override tier** to `CompiledRules`/`RuleEngine`, evaluated **after `deny`

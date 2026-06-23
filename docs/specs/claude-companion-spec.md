@@ -335,11 +335,13 @@ on top of the minimal foundation.
 | 10 | [`swift6-language-mode.spec.md`](features/swift6-language-mode.spec.md) - Swift 6 strict concurrency | maint | shipped v0.1 |
 | - | [`prompt-injection-detection.spec.md`](features/prompt-injection-detection.spec.md) - content-based injection flagging | post-v0.1 | spec (future) |
 | - | [`remote-ssh.spec.md`](features/remote-ssh.spec.md) - gate + full visibility on VSCode Remote-SSH hosts | next | spec (spiked, not built) |
+| - | [`allow-tier.spec.md`](features/allow-tier.spec.md) - "always allow this" / actionable denials (allow override tier + `rules.local.yaml`) | next | spec (deferred, not built) |
 | - | [`default-blacklist.reference.md`](features/default-blacklist.reference.md) - shipped `rules.yaml` deny/ask defaults (cited) | - | reference |
 
 > **v0.1 shipped and released** (rows 1-10 implemented + verified live, 54 tests, Homebrew cask
 > `brew install --cask vhco-pro/tap/claude-companion`). **Next up:** [`remote-ssh`](features/remote-ssh.spec.md)
 > - gate + full visibility on VSCode Remote-SSH hosts (SSH push/pull, not cloud sync; revisits the
-> v0.1 "no remote" non-goal). repo-quicklinks then extends to remote sessions. **Deferred:** the
-> **B4 "always allow this"** / `allow` override tier - needs a new tier in the engine + an
-> app-owned `rules.local.yaml` write-back; left specced, not built (see v0.2 §4 B4 note).
+> v0.1 "no remote" non-goal). repo-quicklinks then extends to remote sessions. **Also unbuilt:** the
+> [`allow-tier`](features/allow-tier.spec.md) "always allow this" override (engine `allow` tier +
+> app-owned `rules.local.yaml`), and the v0.2 items still spec (accurate session lifecycle,
+> notifications + sparkline) - see [`claude-companion-v0.2.spec.md`](claude-companion-v0.2.spec.md).
