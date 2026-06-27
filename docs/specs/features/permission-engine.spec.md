@@ -97,9 +97,11 @@ the existing array, never clobber rtk.
 ```
 PreToolUse → is auto_accept ON? ──no──► return "ask"  (normal Claude Code behavior)
                   │yes
-            match DENY rule (regex)?           ──yes──► "deny"
-                  │no
+            match DENY rule (regex)?           ──yes──► "deny"   (+ reason guides the model:
+                  │no                                            "do not work around; ask the user")
             URL in cmd/args on MALICIOUS feed? ──yes──► "deny"   (+ reason: known-malicious)
+                  │no
+            match ALLOW exception (regex)?     ──yes──► "allow"  (user override; see allow-tier)
                   │no
             match ASK rule (regex)?            ──yes──► "ask"
                   │no
@@ -107,9 +109,12 @@ PreToolUse → is auto_accept ON? ──no──► return "ask"  (normal Claude
                   │no                                            currently flagged compromised)
             return "allow"
 ```
-First matching rule wins; **deny beats ask beats allow**. The hook **always returns a
-decision immediately and never blocks** - `ask` defers to Claude Code's native prompt rather
-than holding the call open (see Latency & failure). See [approval-ux](approval-ux.spec.md).
+First matching rule wins; **deny beats malicious beats allow-exception beats ask**. The `allow`
+tier (added 2026-06-28, [allow-tier](allow-tier.spec.md)) sits *after* deny+malicious so a user
+exception can clear an `ask`/compromised match but **never** a hard deny. The hook **always returns
+a decision immediately and never blocks** - `ask` defers to Claude Code's native prompt rather than
+holding the call open (see Latency & failure). On a `deny`, the `permissionDecisionReason` is written
+to tell the model not to silently work around the block. See [approval-ux](approval-ux.spec.md).
 
 ## Rule model - `~/.config/claude-companion/rules.yaml` (hot-reloaded)
 

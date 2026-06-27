@@ -10,6 +10,23 @@
 > Pair it with the OS sandbox. Regexes assume the matcher reconstructs the full command and
 > matches per `;`/`&&`/`|` segment where possible (rules use `[^|;&]*` to stay in-segment).
 
+## Revisions
+
+**2026-06-28 — rule tiering pass (shipped).** The canonical shipped file is
+[`CompanionKit/Sources/CompanionKit/Resources/default-rules.yaml`](../../../CompanionKit/Sources/CompanionKit/Resources/default-rules.yaml);
+the YAML below is rationale and may lag it. Changes (each engine-verified with a regression test):
+
+- **`rm -rf` retiered** (fixes the 2026-06-18 false-positive below). DENY is now *catastrophic only*:
+  `/`, `/*`, `~`, `$HOME`, an unset-var-at-end (→ `/`), and top-level system dirs (`/etc`, `/usr`,
+  `/System`, …). **Scratch** (`/tmp`, `/tmp/…`, `/var/tmp`, `$TMPDIR`) and **build artifacts**
+  (`rm -rf build`, `node_modules`, `dist/`) → **allow**. Other absolute/home paths and the cwd-wipers
+  `rm -rf *` / `.` / `..` / `./*` → **ask**.
+- **`git push` retiered.** Plain `git push` → **allow** (non-fast-forward is rejected by git anyway);
+  only force-push (`-f`/`--force`, not `--force-with-lease`) → **ask**. (Removed the catch-all push ask.)
+- **Pipe-to-shell tightened.** `\b(?:curl|wget|fetch)\b[^|]*\|…sh` → `\b(?:curl|wget)\b[^|;&\n]*\|…sh`:
+  dropped `fetch` (matched `git fetch`) and constrained `[^|;&\n]` so the downloader and the `| sh`
+  must be in the **same** segment (no more false-positive on `git fetch … ; … | bash local.sh`).
+
 ## `rules.yaml`
 
 ```yaml

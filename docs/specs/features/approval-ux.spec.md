@@ -25,13 +25,17 @@ exactly where you already do. No custom banner, no pending queue, no held-open d
 
 A thin, **informational** layer - it never gates a decision (the native prompt does that):
 
-- **Deny notification (best-effort).** When the engine returns `deny`, post a passive macOS
-  notification ("Companion blocked: `<cmd>`") so a 2am block isn't silent. No action buttons,
-  no waiting. Config: `approval.notify_on_deny: true|false`. (May not surface in the VSCode
-  extension - treat as best-effort, never load-bearing.)
-- **Recent-decisions surface in the dropdown.** The menu-bar panel shows a short list of
-  recent allow/deny/ask decisions (from the audit log) so you can see what auto-ran. This is
-  read-only history, not a queue to action.
+- **Deny notification (built 2026-06-28).** When the engine returns `deny`, the app posts a
+  passive macOS notification ("Claude Companion blocked a command — `<cmd>`") so a 2am block
+  isn't silent. Config: `approval.notify_on_deny: true|false` (default true). Posted by the
+  **running app** (not the hook/daemon), so it surfaces as a normal local notification - the
+  earlier "may not surface in VSCode" worry doesn't apply (that was about hook/daemon-posted
+  ones). No action *buttons* (a hard deny isn't one-click-allowable), but **clicking the banner
+  reveals the config folder** (where `rules.yaml` lives) so a wrong rule is one step from edit.
+- **Needs-attention surface in the dropdown (built; revised).** The menu-bar panel shows recent
+  **ask/deny** decisions (routine `allow`s are hidden - they're the 99% and aren't actionable),
+  with an `N total` count. An `ask`/compromised row offers "Always allow this" / "Block this";
+  a hard `deny` offers a guarded "Edit deny rule…". See [allow-tier](allow-tier.spec.md).
 
 ## Config - `config.yaml`
 ```yaml
@@ -45,19 +49,20 @@ approval:
 - ❌ Notification action buttons (Allow/Deny on the banner).
 - ❌ Pending-approval queue with age timers + inline resolve.
 - ❌ `notify_mode: banner|badge|both`, `timeout_seconds`, `on_timeout`.
-- ❌ "Always allow this" custom exception flow - Claude Code's native prompt already offers
-  its own "don't ask again" affordance; an `ask` rule that's too noisy is edited in
-  `rules.yaml` instead.
+- ⤳ "Always allow this" custom exception flow - *originally* deferred to Claude Code's native
+  "don't ask again", but **subsequently built as its own feature** ([allow-tier](allow-tier.spec.md),
+  shipped 2026-06-28): it writes an app-owned `rules.local.yaml` exception, scoped to the matched
+  tool+pattern, and can clear an `ask`/compromised match (never a hard `deny`).
 
 ## Acceptance criteria
-- [ ] An `ask`-tier match produces Claude Code's native permission prompt (no custom UI),
+- [x] An `ask`-tier match produces Claude Code's native permission prompt (no custom UI),
       and the hook returns within the latency budget (does not block).
-- [ ] A `deny`-tier match posts a passive deny notification when `notify_on_deny: true`,
-      and is silent when `false`.
-- [ ] The dropdown shows the most recent N decisions from the audit log, read-only.
-- [ ] Nothing in this feature ever holds a hook call open.
+- [x] A `deny`-tier match posts a passive deny notification when `notify_on_deny: true`,
+      and is silent when `false`. *(built 2026-06-28; clicking it reveals the config folder)*
+- [x] The dropdown shows recent decisions from the audit log. *(revised: actionable ask/deny only;
+      routine allows hidden - see [allow-tier](allow-tier.spec.md))*
+- [x] Nothing in this feature ever holds a hook call open.
 
 ## Open questions
-- Does the VSCode extension surface passive (action-less) `UNUserNotificationCenter`
-  notifications from a background daemon? If not, the deny-notification is dropped and the
-  dropdown recent-list is the only surface. Confirm during plan 3.
+- *(Resolved 2026-06-28)* VSCode-surfacing was never the issue: the notification is posted by the
+  **running menu-bar app**, not a hook/daemon, so it shows as a normal macOS local notification.

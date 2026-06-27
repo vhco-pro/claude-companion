@@ -7,15 +7,29 @@ public struct CompiledRules: Codable, Sendable {
     public var autoAccept: Bool
     public var deny: [Rule]
     public var ask: [Rule]
+    /// User-set override exceptions. Evaluated AFTER deny + malicious-URL, BEFORE ask, so an
+    /// `allow` can clear an `ask`/compromised match but can NEVER clear a hard deny or a
+    /// malicious-URL block. Fed from rules.local.yaml; see allow-tier.spec.md.
+    public var allow: [Rule]
 
     enum CodingKeys: String, CodingKey {
-        case autoAccept = "auto_accept", deny, ask
+        case autoAccept = "auto_accept", deny, ask, allow
     }
 
-    public init(autoAccept: Bool, deny: [Rule], ask: [Rule]) {
+    public init(autoAccept: Bool, deny: [Rule], ask: [Rule], allow: [Rule] = []) {
         self.autoAccept = autoAccept
         self.deny = deny
         self.ask = ask
+        self.allow = allow
+    }
+
+    // Custom decode so a pre-allow-tier rules.compiled.json (no `allow` key) still loads.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        autoAccept = try c.decode(Bool.self, forKey: .autoAccept)
+        deny = try c.decode([Rule].self, forKey: .deny)
+        ask = try c.decode([Rule].self, forKey: .ask)
+        allow = try c.decodeIfPresent([Rule].self, forKey: .allow) ?? []
     }
 }
 
@@ -44,9 +58,16 @@ public struct Evaluation: Sendable {
 }
 
 public enum RuleEngine {
-    /// Decision flow (see permission-engine.spec.md):
-    /// auto-accept-off → ask; deny regex → deny; URL on malicious feed → deny; ask regex → ask;
-    /// URL on compromised feed → ask; else allow. First match wins; deny > ask > allow.
+    /// Shown to the model as `permissionDecisionReason` on a deny. The reason is the ONLY signal
+    /// the LLM gets, so it's written to stop silent workarounds and route the user into the loop.
+    static let denyTail = "Do not attempt a workaround. If this is intended, ask the user to allow it (via the Claude Companion app)."
+    static let denyGuidance = "Blocked by Claude Companion's safety guard (matched a deny rule). " + denyTail
+
+    /// Decision flow (see permission-engine.spec.md + allow-tier.spec.md):
+    /// auto-accept-off → ask; deny regex → deny; URL on malicious feed → deny; ALLOW exception →
+    /// allow; ask regex → ask; URL on compromised feed → ask; else allow. First match wins.
+    /// The allow tier sits after deny+malicious and before ask, so it clears an ask/compromised
+    /// match but can never override a hard deny or a malicious-URL block.
     public static func evaluate(_ payload: HookPayload, rules: CompiledRules,
                                 blocklist: Blocklist? = nil) -> Evaluation {
         guard rules.autoAccept else {
@@ -58,13 +79,16 @@ public enum RuleEngine {
             : (payload.toolInput?.command).map(URLExtractor.hosts(in:)) ?? []
 
         if let r = firstMatch(payload, in: rules.deny) {
-            return Evaluation(decision: .deny, ruleMatched: r, reason: "blocked by deny rule")
+            return Evaluation(decision: .deny, ruleMatched: r, reason: Self.denyGuidance)
         }
         if let bl = blocklist {
             for h in hosts where bl.lookup(h) == .malicious {
                 return Evaluation(decision: .deny, ruleMatched: "blocklist:\(h)",
-                                  reason: "known-malicious domain: \(h)")
+                                  reason: "Blocked by Claude Companion: \(h) is on a known-malicious-domain feed. \(Self.denyTail)")
             }
+        }
+        if let r = firstMatch(payload, in: rules.allow) {
+            return Evaluation(decision: .allow, ruleMatched: r, reason: "allowed by user exception")
         }
         if let r = firstMatch(payload, in: rules.ask) {
             return Evaluation(decision: .ask, ruleMatched: r, reason: "flagged for review")
