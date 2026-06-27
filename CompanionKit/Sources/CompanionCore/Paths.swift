@@ -17,6 +17,9 @@ public enum Paths {
 
     public static var configFile: String { configDir + "/config.yaml" }
     public static var rulesFile: String { configDir + "/rules.yaml" }
+    /// App-owned overrides (allow exceptions, custom deny/ask, disabled shipped rules). Merged with
+    /// rules.yaml at compile time. The app only ever writes THIS file, never the shipped rules.yaml.
+    public static var rulesLocalFile: String { configDir + "/rules.local.yaml" }
     public static var rulesCompiled: String { configDir + "/rules.compiled.json" }
     public static var blocklist: String { configDir + "/blocklist.db" }
     public static var auditLog: String { configDir + "/audit.ndjson" }

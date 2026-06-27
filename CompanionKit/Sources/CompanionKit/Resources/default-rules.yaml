@@ -7,8 +7,10 @@
 auto_accept: true
 
 deny:
-  # Filesystem destruction
-  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+|--[a-z-]+\s+)*-?[rR][fF]?\s+(?:-[a-zA-Z]*\s+)*(?:/|~|/\*|\$HOME|\$\{HOME\}|"\$HOME"|\$\w+/?\s*$|--no-preserve-root)' }
+  # Filesystem destruction (CATASTROPHIC only): root, /*, whole home, an unset-var-at-end (→ /),
+  # or wiping a top-level system dir. Deeper absolute paths and scratch (/tmp …) are NOT denied
+  # here - they fall to the "ask" tier (or allow for scratch) below. Boundary = ws / ; & | / end.
+  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+|--[a-z-]+\s+)*-?[rR][fF]?\s+(?:-[a-zA-Z]*\s+)*(?:/(?:\s|[;&|]|$)|/\*|~/?(?:\s|[;&|]|$)|(?:\$HOME|\$\{HOME\}|"\$HOME")/?(?:\s|[;&|]|$)|\$\w+/?\s*$|/(?:bin|sbin|etc|usr|var|lib|lib64|opt|dev|sys|proc|boot|root|System|Library|Applications|Users|Volumes|cores|private|net|home)/?(?:\s|[;&|]|$))' }
   - { tool: Bash, command_regex: '\brm\b[^|;&]*--no-preserve-root' }
   - { tool: Bash, command_regex: '\bfind\s+(?:/|~|\$HOME|/\s)[^|]*\s-(?:delete|exec\s+rm)\b' }
   - { tool: Bash, command_regex: '\bmv\s+(?:[^>|]*\s)?(?:~|/|\$HOME|/\*)\s+/dev/null\b' }
@@ -31,8 +33,10 @@ deny:
   - { tool: Bash, command_regex: '\bchown\s+(?:-[a-zA-Z]*\s+)*-R\s+\S+\s+(?:/|~|\$HOME|/\*)\s*$' }
   # Writes into system trees
   - { tool: Bash, command_regex: '>>?\s*/(?:etc|usr|bin|sbin|System|Library)(?:/|\s|$)' }
-  # Pipe-to-shell / RCE
-  - { tool: Bash, command_regex: '\b(?:curl|wget|fetch)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k|fi|t?c)?sh\b' }
+  # Pipe-to-shell / RCE. Scope [^|;&\n] keeps the downloader and the `| sh` in the SAME command
+  # segment (so a benign `git fetch …; … | bash local.sh` doesn't trip it); `fetch` dropped because
+  # it matched `git fetch` and isn't a real macOS downloader (curl/wget cover the threat).
+  - { tool: Bash, command_regex: '\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+)?(?:ba|z|da|k|fi|t?c)?sh\b' }
   - { tool: Bash, command_regex: '\b(?:ba|z|da|k|c)?sh\b\s+<\(\s*(?:curl|wget|fetch)\b' }
   - { tool: Bash, command_regex: '\b(?:base64\s+(?:-[dD]|--decode)|xxd\s+-r|openssl\s+(?:base64|enc)\b[^|]*-d)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b' }
   - { tool: Bash, command_regex: '\beval\b[^|;&]*\$\(\s*(?:curl|wget|fetch)\b' }
@@ -48,11 +52,16 @@ ask:
   # Privilege escalation
   - { tool: Bash, command_regex: '^\s*(?:sudo|doas)\b' }
   - { tool: Bash, command_regex: '^\s*su\b(?:\s+-|\s+\w+|\s*$)' }
-  # Recursive force-delete of project paths (root/home already denied)
-  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+)*-?[rR][fF]?\b(?![^|;&]*(?:/|~|\$HOME|--no-preserve-root))' }
-  # Remote / irreversible VCS
+  # Cwd-wiping relative deletes only: rm -rf *  .  ..  ./*  ../*  (these blow away the working dir).
+  # Plain relative deletes - `rm -rf build`, `node_modules`, `dist/` - fall through to ALLOW (safe
+  # build artifacts). Catastrophic absolute/home targets are already hard-denied above.
+  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+|--[a-z-]+\s+)*-?[rR][fF]?\s+(?:-[a-zA-Z]*\s+)*(?:\*|\.\.?(?:/\*?)?)(?:\s|[;&|]|$)' }
+  # …and of a non-scratch absolute or home path. Scratch (/tmp, /tmp/…, /var/tmp, $TMPDIR via
+  # /var/folders, /private/tmp) is excluded → falls through to allow; everything else here → ask.
+  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+|--[a-z-]+\s+)*-?[rR][fF]?\s+(?:-[a-zA-Z]*\s+)*(?:~|\$HOME|/(?!tmp(?:[/\s;&|]|$)|var/tmp|var/folders|private/tmp|private/var/))' }
+  # Remote / irreversible VCS. Plain `git push` is allowed (non-fast-forward is rejected by git
+  # anyway); only force-push asks. `--force-with-lease` is treated as the safe variant (allowed).
   - { tool: Bash, command_regex: '\bgit\s+push\b(?:[^|;&]*\s)?(?:-f\b|--force(?!-with-lease))' }
-  - { tool: Bash, command_regex: '\bgit\s+push\b' }
   - { tool: Bash, command_regex: '\bgit\s+reset\s+(?:[^|;&]*\s)?--hard\b' }
   - { tool: Bash, command_regex: '\bgit\s+clean\b[^|;&]*-[a-z]*f[a-z]*\b' }
   - { tool: Bash, command_regex: '\bgit\s+(?:filter-branch|filter-repo)\b' }

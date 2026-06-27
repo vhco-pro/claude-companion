@@ -9,6 +9,7 @@ struct PanelView: View {
     @State private var blocklistExpanded = false
     @State private var blocklistQuery = ""
     @State private var expandedSession: String?
+    @State private var expandedDecision: Int64?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -21,6 +22,8 @@ struct PanelView: View {
             blocklistSection
             Divider()
             sessionsSection
+            Divider()
+            decisionsSection
             if !model.projectCosts.isEmpty {
                 Divider(); costSection
             }
@@ -196,6 +199,71 @@ struct PanelView: View {
         .padding(.leading, 14)
     }
 
+    // Decisions that need a human, newest first — ask/deny/compromised only (routine allows are
+    // hidden). An `ask` row → one-click allow exception or block; a hard `deny` → guarded rule-edit
+    // (no silent allow). The "N of M total" makes clear most calls were auto-approved.
+    private var decisionsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Needs attention (\(model.attentionCount))").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(model.totalDecisions) total").font(.caption2).foregroundStyle(.tertiary)
+            }
+            if model.recentDecisions.isEmpty {
+                Text("Nothing needs attention — recent tool calls were all auto-approved.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(model.recentDecisions.prefix(8), id: \.id) { d in
+                        VStack(alignment: .leading, spacing: 4) {
+                            DecisionRow(d: d)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    expandedDecision = (expandedDecision == d.id) ? nil : d.id
+                                }
+                            if expandedDecision == d.id { decisionActions(d) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func decisionActions(_ d: AuditRecord) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Full command, every line. fixedSize(vertical) forces the Text to grow to fit instead
+            // of collapsing to one line + "…" - the part that actually matched is often not on the
+            // first line (e.g. an `rm` after a leading `cd`).
+            if let cmd = d.command, !cmd.isEmpty {
+                Text(cmd).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let rule = d.ruleMatched, !rule.isEmpty {
+                Text("matched: \(rule)").font(.caption2).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 8) {
+                switch d.decision {
+                case "ask":
+                    Button("Always allow this") { model.alwaysAllow(d); expandedDecision = nil }
+                    Button("Block this") { model.blockThis(d); expandedDecision = nil }
+                case "deny":
+                    Button("Edit deny rule…") { model.editDenyRule() }
+                        .help("Hard denies can't be allowed from here — edit rules.yaml directly, with care.")
+                    Text("can't allow a hard deny").font(.caption2).foregroundStyle(.secondary)
+                default:
+                    Text("already allowed").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+        }
+        .padding(.leading, 14)
+    }
+
     private var costSection: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Cost by project (session totals)").font(.caption).foregroundStyle(.secondary)
@@ -244,6 +312,40 @@ private struct UsageBar: View {
                 }
             }
             .frame(height: 6)
+        }
+    }
+}
+
+private struct DecisionRow: View {
+    let d: AuditRecord
+
+    private var color: Color {
+        switch d.decision {
+        case "deny": return .red
+        case "ask": return .orange
+        default: return .green
+        }
+    }
+    private var icon: String {
+        switch d.decision {
+        case "deny": return "xmark.shield.fill"
+        case "ask": return "questionmark.diamond.fill"
+        default: return "checkmark.shield.fill"
+        }
+    }
+    // Flatten newlines/runs of whitespace so a multi-line command reads on one line (otherwise
+    // Text+lineLimit(1) shows only the first line - e.g. a harmless `cd …` while the `rm` that
+    // actually matched is on a later line). Middle-truncation keeps both ends visible.
+    private var oneLine: String {
+        (d.command ?? d.tool ?? "—").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).foregroundStyle(color).font(.caption2)
+            Text(oneLine).font(.caption).lineLimit(1).truncationMode(.middle)
+            Spacer()
+            Text(d.decision).font(.caption2).foregroundStyle(color)
         }
     }
 }

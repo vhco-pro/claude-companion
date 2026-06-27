@@ -15,16 +15,28 @@ public struct AppConfig: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Approval: Codable, Sendable, Equatable {
+        public var notifyOnDeny: Bool
+        public init(notifyOnDeny: Bool) { self.notifyOnDeny = notifyOnDeny }
+        enum CodingKeys: String, CodingKey { case notifyOnDeny = "notify_on_deny" }
+        public init(from d: Decoder) throws {
+            let c = try? d.container(keyedBy: CodingKeys.self)
+            notifyOnDeny = (try? c?.decodeIfPresent(Bool.self, forKey: .notifyOnDeny)) ?? AppConfig.default.approval.notifyOnDeny
+        }
+    }
+
     public var ui: UI
     public var logLevel: String
     public var blocklist: BlocklistConfig
+    public var approval: Approval
 
-    enum CodingKeys: String, CodingKey { case ui; case logLevel = "log_level"; case blocklist }
+    enum CodingKeys: String, CodingKey { case ui; case logLevel = "log_level"; case blocklist; case approval }
 
-    public init(ui: UI, logLevel: String, blocklist: BlocklistConfig) {
+    public init(ui: UI, logLevel: String, blocklist: BlocklistConfig, approval: Approval) {
         self.ui = ui
         self.logLevel = logLevel
         self.blocklist = blocklist
+        self.approval = approval
     }
 
     public init(from decoder: Decoder) throws {
@@ -32,12 +44,14 @@ public struct AppConfig: Codable, Sendable, Equatable {
         ui = (try? c?.decodeIfPresent(UI.self, forKey: .ui)) ?? AppConfig.default.ui
         logLevel = (try? c?.decodeIfPresent(String.self, forKey: .logLevel)) ?? AppConfig.default.logLevel
         blocklist = (try? c?.decodeIfPresent(BlocklistConfig.self, forKey: .blocklist)) ?? AppConfig.default.blocklist
+        approval = (try? c?.decodeIfPresent(Approval.self, forKey: .approval)) ?? AppConfig.default.approval
     }
 
     public static let `default` = AppConfig(
         ui: UI(statusFormat: "◆ {weekly}% · 5h {fivehour}%"),
         logLevel: "info",
-        blocklist: .default
+        blocklist: .default,
+        approval: Approval(notifyOnDeny: true)
     )
 }
 

@@ -2,7 +2,10 @@
 
 > Part of [Claude Companion](../claude-companion-spec.md). Extends
 > [permission-engine](permission-engine.spec.md) and [menubar-ui](menubar-ui.spec.md) B4 (recent
-> decisions). Status: **spec (deferred, not built - design locked 2026-06-18).**
+> decisions). Status: **shipped (implemented 2026-06-28; see [plan](../plans/10-allow-tier.plan.md)).**
+> Engine `allow` tier + `rules.local.yaml` merge + "Always allow this" / "Block this" / guarded
+> "Edit deny rule" in the recent-decisions panel. All acceptance criteria met + unit-tested; the
+> real `companion-hook` binary honors exceptions (verified E2E).
 
 ## Purpose
 

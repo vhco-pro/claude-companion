@@ -12,7 +12,10 @@ import Observation
 @Observable
 public final class AppModel {
     public private(set) var config: AppConfig
+    /// Recent *actionable* decisions (ask/deny/compromised) only - routine `allow`s are the 99%
+    /// and aren't actionable, so they'd bury the rows a user can do something about.
     public private(set) var recentDecisions: [AuditRecord] = []
+    public private(set) var attentionCount: Int = 0
     public private(set) var totalDecisions: Int = 0
     public private(set) var autoAccept: Bool = true
     public private(set) var ruleWarnings: [String] = []
@@ -90,6 +93,10 @@ public final class AppModel {
     private var blocklistTimer: Timer?
     private let netMonitor = NWPathMonitor()
     private var wasOffline = false
+    private let denyNotifier = DenyNotifier()
+    /// Highest audit id already considered for a deny notification. Initialized to the current max
+    /// on launch so the historical backlog isn't replayed as a burst of notifications.
+    private var lastNotifiedAuditId: Int64 = 0
     private var usageTimer: Timer?
     private var lastRulesHash: Int = 0
     /// cwd → resolved repo web URL (nil = resolved, no repo). Presence of the key = already
@@ -128,6 +135,10 @@ public final class AppModel {
     /// Begin watching the config dir (audit.ndjson + config/rules) and do an initial load.
     public func start() {
         refresh()
+        // Mark everything already logged as "seen" so launch doesn't replay old denies, then ask
+        // for notification permission. New denies arriving via the file-watcher get notified.
+        lastNotifiedAuditId = currentMaxAuditId()
+        denyNotifier.requestAuth()
         refreshInstallState()
         if let si = sessionIngestor {
             refreshSessions()
@@ -336,8 +347,34 @@ public final class AppModel {
         if configStore.reload() { config = configStore.config }
         compileRules(force: false)       // guarded by content hash → app's own writes don't loop
         pricing = pricingStore.load()    // pick up pricing.yaml edits
-        refresh()
+        refresh()                        // ingests any new audit lines the hook appended
+        notifyNewDenies()                // …then surface any new hard-denials
         refreshSessions()
+    }
+
+    private func currentMaxAuditId() -> Int64 {
+        guard let db else { return 0 }
+        let maxId = try? db.dbQueue.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM audit")
+        }
+        return (maxId ?? nil) ?? 0
+    }
+
+    /// Post a passive notification for each deny ingested since we last checked (best-effort).
+    private func notifyNewDenies() {
+        guard config.approval.notifyOnDeny, let db else { return }
+        let fresh = (try? db.dbQueue.read { [lastNotifiedAuditId] db in
+            try AuditRecord
+                .filter(Column("decision") == "deny" && Column("id") > lastNotifiedAuditId)
+                .order(Column("id")).fetchAll(db)
+        }) ?? []
+        for d in fresh {
+            let cmd = (d.command ?? d.tool ?? "a command")
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            denyNotifier.post(title: "Claude Companion blocked a command",
+                              body: String(cmd.prefix(120)))
+        }
+        if let maxId = fresh.last?.id { lastNotifiedAuditId = maxId }
     }
 
     /// Recompile rules.yaml only when its content actually changed (so writing rules.compiled.json
@@ -355,10 +392,46 @@ public final class AppModel {
     public func refresh() {
         _ = try? ingestor?.ingestNew()
         guard let db else { return }
+        // Only ask/deny (incl. compromised, which is logged as ask) - the actionable tiers.
         recentDecisions = (try? db.dbQueue.read { db in
-            try AuditRecord.order(Column("id").desc).limit(20).fetchAll(db)
+            try AuditRecord.filter(Column("decision") != "allow")
+                .order(Column("id").desc).limit(20).fetchAll(db)
         }) ?? []
+        attentionCount = (try? db.dbQueue.read {
+            try AuditRecord.filter(Column("decision") != "allow").fetchCount($0)
+        }) ?? 0
         totalDecisions = (try? db.dbQueue.read { try AuditRecord.fetchCount($0) }) ?? 0
+    }
+
+    // MARK: Actionable decisions (allow-tier.spec.md)
+
+    /// "Always allow this": turn a recent `ask`/compromised decision into a scoped allow exception
+    /// in rules.local.yaml. Guarded to `ask` only - a hard `deny` is never allow-overridable here.
+    /// The hook honors the exception on its next call (rules.local.yaml is merged at compile time).
+    public func alwaysAllow(_ record: AuditRecord) {
+        guard record.decision == "ask" else { return }
+        let scope = RulesManager.exceptionScope(tool: record.tool, command: record.command,
+                                                ruleMatched: record.ruleMatched)
+        if let w = try? rules.addAllowException(tool: scope.tool, commandRegex: scope.pattern) {
+            ruleWarnings = w
+        }
+        refresh()
+    }
+
+    /// "Block this": add a user deny rule scoped to the decision's tool + pattern.
+    public func blockThis(_ record: AuditRecord) {
+        let scope = RulesManager.exceptionScope(tool: record.tool, command: record.command,
+                                                ruleMatched: record.ruleMatched)
+        if let w = try? rules.addDeny(tool: scope.tool, commandRegex: scope.pattern) {
+            ruleWarnings = w
+        }
+        refresh()
+    }
+
+    /// Guarded path for a hard `deny`: open the shipped rules.yaml for hand-editing. There is no
+    /// silent allow for a deny - the user must consciously edit the rule (see spec).
+    public func editDenyRule() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: rules.rulesPath))
     }
 
     /// Kill switch - flip auto_accept in rules.yaml + recompile.
