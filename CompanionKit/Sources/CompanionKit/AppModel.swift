@@ -415,18 +415,26 @@ public final class AppModel {
         pushRulesToRemotes()   // a real rules change → propagate to every registered remote
     }
 
+    /// "Needs attention" is scoped to recent activity - a lifetime count of every ask/deny ever
+    /// (which only grows) reads as a perpetual backlog, not something actionable now.
+    public static let attentionWindowDays = 7.0
+
+    private static func iso(_ date: Date) -> String {
+        let f = ISO8601DateFormatter(); return f.string(from: date)
+    }
+
     /// Ingest any new audit lines and refresh the in-memory views.
     public func refresh() {
         _ = try? ingestor?.ingestNew()
         guard let db else { return }
-        // Only ask/deny (incl. compromised, which is logged as ask) - the actionable tiers.
+        // Only ask/deny (incl. compromised, which is logged as ask) - the actionable tiers - and
+        // only within the recent window (older decisions are history, not a live to-do list).
+        let cutoff = Self.iso(Date().addingTimeInterval(-Self.attentionWindowDays * 86_400))
+        let actionable = AuditRecord.filter(Column("decision") != "allow" && Column("ts") >= cutoff)
         recentDecisions = (try? db.dbQueue.read { db in
-            try AuditRecord.filter(Column("decision") != "allow")
-                .order(Column("id").desc).limit(20).fetchAll(db)
+            try actionable.order(Column("id").desc).limit(20).fetchAll(db)
         }) ?? []
-        attentionCount = (try? db.dbQueue.read {
-            try AuditRecord.filter(Column("decision") != "allow").fetchCount($0)
-        }) ?? 0
+        attentionCount = (try? db.dbQueue.read { try actionable.fetchCount($0) }) ?? 0
         totalDecisions = (try? db.dbQueue.read { try AuditRecord.fetchCount($0) }) ?? 0
     }
 

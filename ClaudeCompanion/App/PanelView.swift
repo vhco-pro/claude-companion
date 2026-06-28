@@ -211,7 +211,7 @@ struct PanelView: View {
             HStack {
                 Text("Needs attention (\(model.attentionCount))").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text("\(model.totalDecisions) total").font(.caption2).foregroundStyle(.tertiary)
+                Text("last 7d · \(model.totalDecisions) total").font(.caption2).foregroundStyle(.tertiary)
             }
             if model.recentDecisions.isEmpty {
                 Text("Nothing needs attention — recent tool calls were all auto-approved.")
