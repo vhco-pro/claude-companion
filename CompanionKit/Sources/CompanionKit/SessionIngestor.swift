@@ -18,6 +18,7 @@ public struct SessionSummary: Identifiable, Sendable, Equatable {
     public let active: Bool
     public let recentTools: [String]   // newest-first
     public let repoURL: URL?           // web URL of the cwd's git repo, if any (resolved + cached)
+    public let host: String            // "local" or the SSH alias the session runs on
 }
 
 /// Turns parsed JSONL events into rows in the app DB and answers session summaries.
@@ -35,42 +36,50 @@ public final class SessionIngestor {
         return (p as NSString).lastPathComponent
     }
 
-    public func ingest(_ e: ParsedEvent, now: Date = Date()) {
-        try? db.dbQueue.write { db in try Self.write(db, e, now) }
+    public func ingest(_ e: ParsedEvent, now: Date = Date(), host: String = "local") {
+        try? db.dbQueue.write { db in try Self.write(db, e, now, host) }
     }
 
     /// Ingest many events (one file's worth) in a SINGLE transaction - far faster than a
-    /// transaction per event on the first full scan.
-    public func ingestBatch(_ items: [(event: ParsedEvent, at: Date)]) {
+    /// transaction per event on the first full scan. All events in a batch share one `host`
+    /// (a batch is one file, which lives on exactly one host).
+    public func ingestBatch(_ items: [(event: ParsedEvent, at: Date)], host: String = "local") {
         guard !items.isEmpty else { return }
         try? db.dbQueue.write { db in
-            for item in items { try Self.write(db, item.event, item.at) }
+            for item in items { try Self.write(db, item.event, item.at, host) }
         }
     }
 
-    private static func write(_ db: Database, _ e: ParsedEvent, _ now: Date) throws {
-        guard let sid = e.sessionId else { return }
+    /// Session ids are only unique *within* a host, so remote ids are namespaced `<alias>:<id>` to
+    /// keep two hosts' sessions from colliding. Local ids stay bare (no behaviour change).
+    public static func namespacedId(host: String, sessionId: String) -> String {
+        host == "local" ? sessionId : "\(host):\(sessionId)"
+    }
+
+    private static func write(_ db: Database, _ e: ParsedEvent, _ now: Date, _ host: String) throws {
+        guard let raw = e.sessionId else { return }
+        let sid = namespacedId(host: host, sessionId: raw)
         try db.execute(sql: """
-            INSERT INTO sessions (id, project_path, model, started_at, last_seen_at, status)
-            VALUES (?, ?, ?, ?, ?, 'active')
+            INSERT INTO sessions (id, project_path, model, started_at, last_seen_at, status, host)
+            VALUES (?, ?, ?, ?, ?, 'active', ?)
             ON CONFLICT(id) DO UPDATE SET
               last_seen_at = excluded.last_seen_at,
               model = COALESCE(excluded.model, sessions.model),
               project_path = COALESCE(excluded.project_path, sessions.project_path),
               status = 'active'
-            """, arguments: [sid, e.cwd, e.model, now, now])
+            """, arguments: [sid, e.cwd, e.model, now, now, host])
 
         if let u = e.usage {
             try db.execute(sql: """
-                INSERT INTO token_usage (session_id, ts, input, output, cache_read, cache_write)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, arguments: [sid, now, u.input, u.output, u.cacheRead, u.cacheWrite])
+                INSERT INTO token_usage (session_id, ts, input, output, cache_read, cache_write, host)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [sid, now, u.input, u.output, u.cacheRead, u.cacheWrite, host])
         }
         for t in e.toolUses {
             try db.execute(sql: """
-                INSERT INTO tool_events (session_id, ts, tool, bash_command, target_path)
-                VALUES (?, ?, ?, ?, ?)
-                """, arguments: [sid, now, t.name, t.command, t.filePath])
+                INSERT INTO tool_events (session_id, ts, tool, bash_command, target_path, host)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, arguments: [sid, now, t.name, t.command, t.filePath, host])
         }
     }
 
@@ -93,7 +102,7 @@ public final class SessionIngestor {
                           repoURL: (String?) -> URL? = { _ in nil }) -> [SessionSummary] {
         (try? db.dbQueue.read { db -> [SessionSummary] in
             let sessions = try Row.fetchAll(db, sql: """
-                SELECT id, project_path, model, started_at, last_seen_at FROM sessions
+                SELECT id, project_path, model, started_at, last_seen_at, host FROM sessions
                 ORDER BY last_seen_at DESC LIMIT ?
                 """, arguments: [limit])
 
@@ -129,7 +138,8 @@ public final class SessionIngestor {
                     lastSeen: lastSeen,
                     active: active,
                     recentTools: recent,
-                    repoURL: repoURL(projectPath)
+                    repoURL: repoURL(projectPath),
+                    host: (row["host"] as String?) ?? "local"
                 )
             }
         }) ?? []

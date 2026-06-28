@@ -99,6 +99,18 @@ public final class AppModel {
     private var lastNotifiedAuditId: Int64 = 0
     private var usageTimer: Timer?
     private var lastRulesHash: Int = 0
+    // MARK: remote-ssh (remote-ssh.spec.md)
+    private let remotesStore = RemotesStore()
+    private let remoteStateStore = RemoteStateStore()
+    private var remoteSync: RemoteSync?
+    private var remoteSyncTimer: Timer?
+    public private(set) var remotes: [Remote] = []
+    public private(set) var remoteStates: [String: RemoteState] = [:]
+    /// Hosts mid register/sync (UI spinner).
+    public private(set) var remoteBusy: Set<String> = []
+    /// Set after a successful register - the UI shows "reload the VSCode window" (the remote
+    /// extension host snapshots hooks at start). Cleared when the user dismisses it.
+    public private(set) var reloadReminderHost: String?
     /// cwd → resolved repo web URL (nil = resolved, no repo). Presence of the key = already
     /// attempted, so we shell `git` at most once per directory.
     private var repoURLCache: [String: URL?] = [:]
@@ -113,6 +125,7 @@ public final class AppModel {
             db = database
             ingestor = AuditIngestor(db: database)
             sessionIngestor = SessionIngestor(db: database)
+            remoteSync = RemoteSync(db: database)
             status = "ready"
         } catch {
             status = "db error: \(error.localizedDescription)"
@@ -189,6 +202,19 @@ public final class AppModel {
                 }
             }
             netMonitor.start(queue: DispatchQueue(label: "pro.vhco.companion.net"))
+        }
+
+        // Remote-SSH: load registered hosts, do an initial pull, then poll on a slow timer + wake.
+        remotes = remotesStore.load()
+        refreshRemoteStates()
+        if !remotes.isEmpty {
+            syncRemotesNow()
+            remoteSyncTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.syncRemotesNow() }
+            }
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in Task { @MainActor in self?.syncRemotesNow() } }
         }
     }
 
@@ -386,6 +412,7 @@ public final class AppModel {
         lastRulesHash = hash
         ruleWarnings = (try? rules.compile()) ?? []
         autoAccept = rules.currentAutoAccept()
+        pushRulesToRemotes()   // a real rules change → propagate to every registered remote
     }
 
     /// Ingest any new audit lines and refresh the in-memory views.
@@ -440,6 +467,123 @@ public final class AppModel {
         if let v = try? rules.setAutoAccept(newValue) {
             autoAccept = v
             lastRulesHash = ((try? String(contentsOfFile: rules.rulesPath, encoding: .utf8)) ?? "").hashValue
+            pushRulesToRemotes()   // kill-switch is high-priority: push immediately, don't wait
+        }
+    }
+
+    // MARK: Remote-SSH orchestration
+
+    /// SSH-config hosts not already registered (the "Add remote…" picker source).
+    public func availableSSHHosts() -> [String] {
+        let registered = Set(remotes.map(\.alias))
+        return SSHConfigParser.aliases().filter { !registered.contains($0) }
+    }
+
+    private func refreshRemoteStates() {
+        var m: [String: RemoteState] = [:]
+        for r in remotes { m[r.alias] = remoteStateStore.load(alias: r.alias) }
+        remoteStates = m
+    }
+
+    /// Seed the repo-link cache with URLs the sync resolved over SSH, so remote sessions get
+    /// quicklinks (the local git resolver can't reach a remote cwd). Overwrites any nil the local
+    /// resolver may have cached for that remote path.
+    private func mergeRemoteRepoURLs() {
+        guard let sync = remoteSync else { return }
+        for (cwd, url) in sync.remoteRepoURLs() { repoURLCache[cwd] = url }
+    }
+
+    public func dismissReloadReminder() { reloadReminderHost = nil }
+
+    /// Register a host: install the Linux hook + rules + merge settings (over SSH), then persist it
+    /// and do a first pull. Runs off-main (SSH + a ~55 MB download); updates the UI on completion.
+    public func addRemote(_ alias: String) {
+        let alias = alias.trimmingCharacters(in: .whitespaces)
+        guard let sync = remoteSync, !alias.isEmpty,
+              !remotes.contains(where: { $0.alias == alias }) else { return }
+        remoteBusy.insert(alias)
+        Task.detached { [weak self] in
+            var err: String?
+            do {
+                try await sync.register(Remote(alias: alias))
+                sync.syncOnce(Remote(alias: alias))
+                try? sync.pushRules(to: Remote(alias: alias))
+            } catch { err = RemoteSync.describe(error) }
+            await MainActor.run {
+                guard let self else { return }
+                self.remoteBusy.remove(alias)
+                if let err {
+                    var st = self.remoteStateStore.load(alias: alias)
+                    st.lastError = err; st.reachable = false
+                    self.remoteStateStore.save(alias: alias, st)
+                } else {
+                    self.remotes = (try? self.remotesStore.add(alias: alias)) ?? self.remotes
+                    self.reloadReminderHost = alias
+                }
+                self.refreshRemoteStates()
+                self.mergeRemoteRepoURLs()
+                self.refreshSessions()
+            }
+        }
+    }
+
+    /// Remove a host: uninstall our remote hook entries, then forget it locally.
+    public func removeRemote(_ alias: String) {
+        guard let sync = remoteSync else { return }
+        remoteBusy.insert(alias)
+        Task.detached { [weak self] in
+            try? sync.deregister(Remote(alias: alias))
+            await MainActor.run {
+                guard let self else { return }
+                self.remoteBusy.remove(alias)
+                self.remotes = (try? self.remotesStore.remove(alias: alias)) ?? self.remotes
+                self.remoteStates[alias] = nil
+                self.refreshSessions()
+            }
+        }
+    }
+
+    /// Manual re-sync of one host (the Remotes UI button).
+    public func resyncRemote(_ alias: String) {
+        guard let sync = remoteSync, let r = remotes.first(where: { $0.alias == alias }) else { return }
+        remoteBusy.insert(alias)
+        Task.detached { [weak self] in
+            sync.syncOnce(r)
+            await MainActor.run {
+                self?.remoteBusy.remove(alias); self?.refreshRemoteStates()
+                self?.mergeRemoteRepoURLs(); self?.refreshSessions()
+            }
+        }
+    }
+
+    /// Pull every enabled remote once, off-main, then refresh the UI.
+    private func syncRemotesNow() {
+        guard let sync = remoteSync, !remotes.isEmpty else { return }
+        let rs = remotes
+        Task.detached { [weak self] in
+            for r in rs { sync.syncOnce(r) }
+            await MainActor.run { self?.refreshRemoteStates(); self?.mergeRemoteRepoURLs(); self?.refreshSessions() }
+        }
+    }
+
+    /// Push the freshly-compiled rules to every enabled remote (best-effort; records per-host error).
+    private func pushRulesToRemotes() {
+        guard let sync = remoteSync else { return }
+        let rs = remotes.filter(\.enabled)
+        guard !rs.isEmpty else { return }
+        Task.detached { [weak self] in
+            for r in rs {
+                do { try sync.pushRules(to: r) }
+                catch {
+                    let msg = RemoteSync.describe(error)
+                    await MainActor.run {
+                        guard let self else { return }
+                        var st = self.remoteStateStore.load(alias: r.alias); st.lastError = msg
+                        self.remoteStateStore.save(alias: r.alias, st)
+                        self.remoteStates[r.alias] = st
+                    }
+                }
+            }
         }
     }
 }

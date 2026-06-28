@@ -11,8 +11,9 @@ public struct SessionRecord: Codable, FetchableRecord, PersistableRecord {
     public var startedAt: Date?
     public var lastSeenAt: Date?
     public var status: String?
+    public var host: String = "local"
     enum CodingKeys: String, CodingKey {
-        case id, model, status
+        case id, model, status, host
         case projectPath = "project_path"
         case startedAt = "started_at"
         case lastSeenAt = "last_seen_at"
@@ -27,8 +28,9 @@ public struct ToolEventRecord: Codable, FetchableRecord, MutablePersistableRecor
     public var tool: String?
     public var bashCommand: String?
     public var targetPath: String?
+    public var host: String = "local"
     enum CodingKeys: String, CodingKey {
-        case id, ts, tool
+        case id, ts, tool, host
         case sessionId = "session_id"
         case bashCommand = "bash_command"
         case targetPath = "target_path"
@@ -45,8 +47,9 @@ public struct TokenUsageRecord: Codable, FetchableRecord, MutablePersistableReco
     public var output: Int?
     public var cacheRead: Int?
     public var cacheWrite: Int?
+    public var host: String = "local"
     enum CodingKeys: String, CodingKey {
-        case id, ts, input, output
+        case id, ts, input, output, host
         case sessionId = "session_id"
         case cacheRead = "cache_read"
         case cacheWrite = "cache_write"
@@ -64,8 +67,9 @@ public struct AuditRecord: Codable, FetchableRecord, MutablePersistableRecord {
     public var command: String?
     public var decision: String
     public var ruleMatched: String?
+    public var host: String = "local"
     enum CodingKeys: String, CodingKey {
-        case id, ts, tool, command, decision
+        case id, ts, tool, command, decision, host
         case sessionId = "session_id"
         case promptId = "prompt_id"
         case ruleMatched = "rule_matched"

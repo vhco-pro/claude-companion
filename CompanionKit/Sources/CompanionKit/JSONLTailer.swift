@@ -12,6 +12,7 @@ public final class JSONLTailer: @unchecked Sendable {
     private let ingestor: SessionIngestor
     private let projectsDir: String
     private let offsetsPath: String
+    private let host: String
     private var offsets: [String: UInt64] = [:]
     private var watcher: FileWatcher?
     private let queue = DispatchQueue(label: "pro.vhco.companion.jsonl")
@@ -20,10 +21,12 @@ public final class JSONLTailer: @unchecked Sendable {
     public init(ingestor: SessionIngestor,
                 projectsDir: String = ("~/.claude/projects" as NSString).expandingTildeInPath,
                 offsetsPath: String = Paths.configDir + "/jsonl-offsets.json",
+                host: String = "local",
                 onUpdate: @escaping @MainActor @Sendable () -> Void = {}) {
         self.ingestor = ingestor
         self.projectsDir = projectsDir
         self.offsetsPath = offsetsPath
+        self.host = host
         self.onUpdate = onUpdate
     }
 
@@ -77,7 +80,7 @@ public final class JSONLTailer: @unchecked Sendable {
             let ts = event.timestamp.flatMap(Self.parseTimestamp) ?? Date()
             items.append((event, ts))
         }
-        ingestor.ingestBatch(items)   // one transaction for the whole file
+        ingestor.ingestBatch(items, host: host)   // one transaction for the whole file
         offsets[path] = start + UInt64(lastNL + 1)
     }
 
