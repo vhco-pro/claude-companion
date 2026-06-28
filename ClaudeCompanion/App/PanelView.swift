@@ -238,12 +238,16 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 4) {
             // Full command, every line. fixedSize(vertical) forces the Text to grow to fit instead
             // of collapsing to one line + "…" - the part that actually matched is often not on the
-            // first line (e.g. an `rm` after a leading `cd`).
+            // first line (e.g. an `rm` after a leading `cd`). Bounded in a ScrollView so a huge
+            // command (e.g. a heredoc) can't push the action buttons off the bottom of the popover.
             if let cmd = d.command, !cmd.isEmpty {
-                Text(cmd).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ScrollView {
+                    Text(cmd).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 140)
             }
             if let rule = d.ruleMatched, !rule.isEmpty {
                 Text("matched: \(rule)").font(.caption2).foregroundStyle(.tertiary)
