@@ -32,6 +32,40 @@ final class RuleEngineTests: XCTestCase {
         XCTAssertEqual(RuleEngine.evaluate(bash("ls -la"), rules: off).decision, .ask)
     }
 
+    // MARK: quote-aware matching (CommandSanitizer)
+
+    func testQuotedDataAndCommentsDoNotFalseTrigger() {
+        // A flagged pattern inside quoted DATA or a comment isn't a real command → allow.
+        XCTAssertEqual(RuleEngine.evaluate(bash(#"echo "rm -rf /""#), rules: rules).decision, .allow)
+        XCTAssertEqual(RuleEngine.evaluate(bash(#"git commit -m "guard against rm -rf / in docs""#), rules: rules).decision, .allow)
+        XCTAssertEqual(RuleEngine.evaluate(bash("ls -la # then rm -rf /"), rules: rules).decision, .allow)
+        XCTAssertEqual(RuleEngine.evaluate(bash(#"printf "%s" "see git push notes""#), rules: rules).decision, .allow)
+    }
+
+    func testRealCommandsStillMatchAfterSanitizing() {
+        XCTAssertEqual(RuleEngine.evaluate(bash("rm -rf /"), rules: rules).decision, .deny)
+        XCTAssertEqual(RuleEngine.evaluate(bash("rm -rf / # clean up root, oops"), rules: rules).decision, .deny)
+        XCTAssertEqual(RuleEngine.evaluate(bash("git push origin main"), rules: rules).decision, .ask)
+    }
+
+    func testExecutableConstructsAreNeverMasked() {
+        // eval / `…sh -c` / command-substitution / backticks execute their quoted text → never blank.
+        for cmd in [#"sh -c "rm -rf /""#, #"bash -c "rm -rf ~""#, #"eval "rm -rf /""#,
+                    "x=$(rm -rf /)", "echo `rm -rf /`"] {
+            XCTAssertEqual(RuleEngine.evaluate(bash(cmd), rules: rules).decision, .deny, "must still deny: \(cmd)")
+        }
+    }
+
+    func testSanitizerBlanksDataKeepsStructureAndExecutables() {
+        XCTAssertEqual(CommandSanitizer.forMatching(#"echo "rm -rf /""#), #"echo """#)
+        XCTAssertEqual(CommandSanitizer.forMatching("echo 'secret'"), "echo ''")
+        XCTAssertEqual(CommandSanitizer.forMatching("ls # rm -rf /"), "ls ")
+        // Execution-capable constructs are returned verbatim (never sanitized).
+        for s in [#"sh -c "rm -rf /""#, "x=$(rm -rf /)", "echo `id`", #"eval "x""#] {
+            XCTAssertEqual(CommandSanitizer.forMatching(s), s)
+        }
+    }
+
     func testDecisionOutputShapeMatchesClaudeCodeContract() throws {
         let json = try JSONEncoder().encode(HookDecisionOutput(.deny, reason: "x"))
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: json) as? [String: Any])
