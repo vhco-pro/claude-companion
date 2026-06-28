@@ -12,6 +12,21 @@
 
 ## Revisions
 
+**2026-06-29 — shipped `allow:` tier (false-positive reduction).** Audit review showed the residual
+noise was safe tooling tripping an `ask` because a flagged phrase sat *inside* an argument/message
+(e.g. `gh pr create --body "...git push --force..."`, or a path containing "release"). Added an
+`allow:` section to the shipped rules (the engine evaluates **deny → allow → ask**, so allow clears a
+noisy ask but **never** a catastrophic deny):
+- **`gh` non-destructive subcommands** (`pr`, `issue`, `run`, `workflow`, `api`, `repo view/list/clone`,
+  `auth status/switch`, `variable list/get`, …) → **allow**. Deliberately *excludes* `gh release`,
+  `gh secret`, `gh repo delete` and force-push, which stay in `ask`.
+- **Build-artifact deletes at any path** (`build`, `dist`, `node_modules`, `target`, `.build`,
+  `DerivedData`, `__pycache__`, …) → **allow**, even absolute (`rm -rf /Users/me/proj/build`). Non-artifact
+  absolute/home deletes still **ask**; catastrophic targets still **deny** (checked first).
+- Trade-off: a compound `rm -rf <non-artifact> && rm -rf build` is allowed as a whole (allow
+  short-circuits); catastrophic segments are still hard-denied regardless. Acceptable for the friction
+  saved; documented here.
+
 **2026-06-28 — rule tiering pass (shipped).** The canonical shipped file is
 [`CompanionKit/Sources/CompanionKit/Resources/default-rules.yaml`](../../../CompanionKit/Sources/CompanionKit/Resources/default-rules.yaml);
 the YAML below is rationale and may lag it. Changes (each engine-verified with a regression test):

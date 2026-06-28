@@ -220,16 +220,46 @@ final class RulesCompilerTests: XCTestCase {
                     "rm -rf /usr/", "rm -rf /System", "rm -rf $UNSET", "rm -rf --no-preserve-root ./x"] {
             XCTAssertEqual(decide(cmd), .deny, "should DENY: \(cmd)")
         }
-        // Scratch + safe relative build artifacts → allowed (no nag).
+        // Scratch + build artifacts → allowed (no nag). Artifact dirs are allowed even at an
+        // absolute path (the allow tier), since deleting them is routine and catastrophic targets
+        // have no artifact name (and are hard-denied above regardless).
         for cmd in ["rm -rf /tmp/cc-x", "rm -rf /tmp", "rm -rf /var/tmp/x", "rm -rf \"$TMPDIR/x\"",
-                    "rm -rf build", "rm -rf node_modules", "rm -rf dist/", "rm -rf ./build"] {
+                    "rm -rf build", "rm -rf node_modules", "rm -rf dist/", "rm -rf ./build",
+                    "rm -rf /Users/me/project/build", "rm -rf /Users/me/proj/node_modules",
+                    "rm -rf target", "rm -rf .build/release"] {
             XCTAssertEqual(decide(cmd), .allow, "should ALLOW: \(cmd)")
         }
-        // Other absolute / home deletes, and cwd-wiping relative forms → ask.
-        for cmd in ["rm -rf /Users/me/project/build", "rm -rf ~/Downloads/x", "rm -rf $HOME/x",
+        // Other absolute / home deletes (non-artifact), and cwd-wiping relative forms → ask.
+        for cmd in ["rm -rf ~/Downloads/x", "rm -rf $HOME/x", "rm -rf /Users/me/project/src",
                     "rm -rf /opt/homebrew/x", "rm -rf *", "rm -rf .", "rm -rf ..", "rm -rf ./*"] {
             XCTAssertEqual(decide(cmd), .ask, "should ASK: \(cmd)")
         }
+    }
+
+    func testToolingAllowClearsIncidentalAsksButNotDenies() throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(atPath: dir) }
+        let mgr = RulesManager(rulesPath: dir + "/rules.yaml",
+                               localPath: dir + "/rules.local.yaml",
+                               compiledPath: dir + "/rules.compiled.json")
+        mgr.ensureDefaultRules()
+        try mgr.compile()
+        let compiled = try JSONDecoder().decode(
+            CompiledRules.self, from: Data(contentsOf: URL(fileURLWithPath: dir + "/rules.compiled.json")))
+        func decide(_ cmd: String) -> PermissionDecision {
+            RuleEngine.evaluate(HookPayload(hookEventName: "PreToolUse", toolName: "Bash",
+                                            toolInput: ToolInput(command: cmd)), rules: compiled).decision
+        }
+        // Safe gh tooling auto-allows, even when an argument incidentally contains an ASK phrase
+        // (e.g. a PR body mentioning `git push --force`) - allow is evaluated before the ask tier.
+        XCTAssertEqual(decide("gh pr create --title x --body \"notes on git push --force usage\""), .allow)
+        XCTAssertEqual(decide("gh api repos/o/r/contents/.github/workflows/release.yml"), .allow)
+        XCTAssertEqual(decide("gh run list"), .allow)
+        XCTAssertEqual(decide("gh auth switch --user michielvha"), .allow)
+        // But genuinely consequential gh stays in the ask tier (not allow-listed).
+        XCTAssertEqual(decide("gh release create v1.2.3 --generate-notes"), .ask)
+        // And allow NEVER clears a hard deny, even inside an otherwise-allowed command - an
+        // incidental catastrophic pattern (here a real `&& rm -rf /`) still hard-blocks.
+        XCTAssertEqual(decide("gh pr create --body x && rm -rf /"), .deny)
     }
 
     func testGitPushPolicyAllowsPlainAsksForce() throws {

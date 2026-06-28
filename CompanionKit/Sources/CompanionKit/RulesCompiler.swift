@@ -44,7 +44,7 @@ public enum RulesCompiler {
             autoAccept: base.autoAccept,
             deny: convert(base.deny, tier: "deny") + convert(local.deny, tier: "local deny"),
             ask: convert(baseAsk, tier: "ask") + convert(local.ask, tier: "local ask"),
-            allow: convert(local.allow, tier: "allow")
+            allow: convert(base.allow, tier: "allow") + convert(local.allow, tier: "local allow")
         )
         return Result(compiled: compiled, warnings: warnings)
     }

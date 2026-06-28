@@ -103,3 +103,17 @@ ask:
   - { tool: Bash, command_regex: '\b(?:dropdb|mysqladmin\s+drop)\b' }
   # Mass process kill
   - { tool: Bash, command_regex: '\bkillall\b' }
+
+allow:
+  # Safe-by-default tooling that otherwise trips an `ask` because a flagged pattern appears INSIDE
+  # an argument or message - e.g. `gh pr create --body "...rm -rf /..."`, or a path/URL containing
+  # the word "release". Allow is evaluated AFTER the hard-deny tier, so these can only clear a noisy
+  # ask, never a catastrophic block. Deliberately scoped: `gh release`/`gh secret`/`gh repo delete`
+  # and force-push stay in the ask tier.
+  - { tool: Bash, command_regex: '\bgh\s+(?:pr|issue|run|workflow|api|browse|search|label|gist|status|cache|extension|alias|ruleset|codespace)\b' }
+  - { tool: Bash, command_regex: '\bgh\s+auth\s+(?:status|switch|token|setup-git)\b' }
+  - { tool: Bash, command_regex: '\bgh\s+repo\s+(?:view|list|clone|sync|set-default)\b' }
+  - { tool: Bash, command_regex: '\bgh\s+variable\s+(?:list|get)\b' }
+  # Deleting build artifacts is routine + safe. Allow a known artifact dir as the rm target even at
+  # an absolute path (a catastrophic target has no artifact name and is hard-denied above anyway).
+  - { tool: Bash, command_regex: '\brm\s+(?:-[a-zA-Z]*\s+|--[a-z-]+\s+)*-?[rR][fF]?\s+(?:-[a-zA-Z]*\s+)*(?:[^\s|;&]*/)?(?:build|dist|out|coverage|node_modules|target|\.build|\.next|\.turbo|\.gradle|__pycache__|\.pytest_cache|DerivedData)/?(?:\s|[;&|]|$)' }
