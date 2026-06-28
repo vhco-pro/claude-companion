@@ -32,3 +32,24 @@ jobs:
       tag-prefix: v
       runner: macos-26   # Tahoe → ships Xcode 26, needed to compile the AppIcon.icon
     secrets: inherit
+
+  # Event-driven Homebrew cask bump: the instant a release publishes, mint a homebrew-tap-scoped
+  # token via the vhco-release-bot GitHub App and trigger that repo's sync workflow - no 30-min
+  # poll lag. The sync is idempotent (no-ops if the cask already matches), so running it after a
+  # no-bump release is harmless. The tap keeps a daily cron as a backstop.
+  sync-tap:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint a homebrew-tap-scoped token (vhco-release-bot)
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.VHCO_RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.VHCO_RELEASE_BOT_PRIVATE_KEY }}
+          owner: vhco-pro
+          repositories: homebrew-tap
+      - name: Trigger the cask sync immediately
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: gh workflow run sync-claude-companion.yml --repo vhco-pro/homebrew-tap
