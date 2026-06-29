@@ -66,6 +66,66 @@ final class RuleEngineTests: XCTestCase {
         }
     }
 
+    // MARK: heredoc-aware matching (a flagged pattern in heredoc DATA must not false-deny)
+
+    /// The shipped redirect-to-system-paths deny rule, used to reproduce the heredoc false-positive.
+    private let redirectRules = CompiledRules(
+        autoAccept: true,
+        deny: [Rule(tool: "Bash", commandRegex: #">>?\s*/(?:etc|usr|bin|sbin|System|Library)(?:/|\s|$)"#)],
+        ask: [])
+
+    /// The real-world regression: a `cat > /tmp/x <<'JSON'` payload that merely *contains the text*
+    /// `>> /etc/…` (data being written to a file), with a genuine `$(…)` elsewhere in the command.
+    /// Must allow — the redirect lives in heredoc data, never executed.
+    func testQuotedHeredocPayloadIsDataEvenWithSubstitutionElsewhere() {
+        let cmd = """
+        cat > /tmp/dbg.json <<'JSON'
+        {
+          "commands": [
+            "printf '\\n[log]\\n' >> /etc/dcv/dcv.conf",
+            "cp -a /etc/dcv/dcv.conf /etc/dcv/dcv.conf.bak"
+          ]
+        }
+        JSON
+        CID=$(aws ssm send-command --parameters file:///tmp/dbg.json --output text 2>&1)
+        echo "### $CID"
+        """
+        XCTAssertEqual(RuleEngine.evaluate(bash(cmd), rules: redirectRules).decision, .allow)
+    }
+
+    /// A redirect into a system path in REAL command position still denies (not inside a heredoc).
+    func testRealRedirectToSystemPathStillDenies() {
+        XCTAssertEqual(RuleEngine.evaluate(bash("echo x >> /etc/hosts"), rules: redirectRules).decision, .deny)
+    }
+
+    /// A heredoc fed to an interpreter is code, not data → a flagged pattern in its body still matches.
+    func testInterpreterFedHeredocBodyStillMatches() {
+        let cmd = """
+        bash <<'EOF'
+        echo x >> /usr/local/bin/evil
+        EOF
+        """
+        XCTAssertEqual(RuleEngine.evaluate(bash(cmd), rules: redirectRules).decision, .deny)
+    }
+
+    /// A `cat <<EOF | sh` pipes the body to a shell → still code → flagged pattern matches.
+    func testHeredocPipedToShellStillMatches() {
+        let cmd = """
+        cat <<'EOF' | sh
+        rm -rf /
+        EOF
+        """
+        XCTAssertEqual(RuleEngine.evaluate(bash(cmd), rules: rules).decision, .deny)
+    }
+
+    func testBlankDataHeredocReplacesBodyKeepsTerminator() {
+        let cmd = "cat > /tmp/x <<'EOF'\n>> /etc/passwd\nEOF\necho done"
+        let out = CommandSanitizer.blankDataHeredocs(cmd)
+        XCTAssertFalse(out.contains("/etc/passwd"), out)
+        XCTAssertTrue(out.contains("EOF"), out)        // terminator + opener line preserved
+        XCTAssertTrue(out.contains("echo done"), out)  // trailing command preserved
+    }
+
     func testDecisionOutputShapeMatchesClaudeCodeContract() throws {
         let json = try JSONEncoder().encode(HookDecisionOutput(.deny, reason: "x"))
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: json) as? [String: Any])

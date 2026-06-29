@@ -14,28 +14,34 @@ struct PanelView: View {
     @State private var newRemoteAlias = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
-            Divider()
-            usageSection
-            Divider()
-            controlsSection
-            Divider()
-            blocklistSection
-            Divider()
-            sessionsSection
-            Divider()
-            decisionsSection
-            Divider()
-            remotesSection
-            if !model.projectCosts.isEmpty {
-                Divider(); costSection
+        // One scroll context for the whole panel: a long audit list or a big expanded command can
+        // never push content (the action buttons, footer) off the bottom of the popover - it all
+        // stays reachable by scrolling. Capped height so a busy panel doesn't fill the screen.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                header
+                Divider()
+                usageSection
+                Divider()
+                controlsSection
+                Divider()
+                blocklistSection
+                Divider()
+                sessionsSection
+                Divider()
+                decisionsSection
+                Divider()
+                remotesSection
+                if !model.projectCosts.isEmpty {
+                    Divider(); costSection
+                }
+                Divider()
+                footer
             }
-            Divider()
-            footer
+            .padding(12)
         }
-        .padding(12)
         .frame(width: 360)
+        .frame(maxHeight: 680)
     }
 
     // MARK: sections
@@ -238,16 +244,13 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 4) {
             // Full command, every line. fixedSize(vertical) forces the Text to grow to fit instead
             // of collapsing to one line + "…" - the part that actually matched is often not on the
-            // first line (e.g. an `rm` after a leading `cd`). Bounded in a ScrollView so a huge
-            // command (e.g. a heredoc) can't push the action buttons off the bottom of the popover.
+            // first line (e.g. an `rm` after a leading `cd`). The whole panel scrolls (see `body`),
+            // so even a huge heredoc flows inline and stays reachable without a fiddly nested scroll.
             if let cmd = d.command, !cmd.isEmpty {
-                ScrollView {
-                    Text(cmd).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 140)
+                Text(cmd).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let rule = d.ruleMatched, !rule.isEmpty {
                 Text("matched: \(rule)").font(.caption2).foregroundStyle(.tertiary)
