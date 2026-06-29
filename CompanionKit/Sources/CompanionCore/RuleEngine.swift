@@ -78,7 +78,12 @@ public enum RuleEngine {
         let hosts: [String] = blocklist == nil ? []
             : (payload.toolInput?.command).map(URLExtractor.hosts(in:)) ?? []
 
-        if let r = firstMatch(payload, in: rules.deny) {
+        // Match command rules against the sanitized command so a flagged pattern inside quoted DATA
+        // or a comment doesn't false-positive (CommandSanitizer returns the original unchanged when
+        // any execution-capable construct is present, so real threats are never masked).
+        let cmd = payload.toolInput?.command.map(CommandSanitizer.forMatching)
+
+        if let r = firstMatch(payload, command: cmd, in: rules.deny) {
             return Evaluation(decision: .deny, ruleMatched: r, reason: Self.denyGuidance)
         }
         if let bl = blocklist {
@@ -87,10 +92,10 @@ public enum RuleEngine {
                                   reason: "Blocked by Claude Companion: \(h) is on a known-malicious-domain feed. \(Self.denyTail)")
             }
         }
-        if let r = firstMatch(payload, in: rules.allow) {
+        if let r = firstMatch(payload, command: cmd, in: rules.allow) {
             return Evaluation(decision: .allow, ruleMatched: r, reason: "allowed by user exception")
         }
-        if let r = firstMatch(payload, in: rules.ask) {
+        if let r = firstMatch(payload, command: cmd, in: rules.ask) {
             return Evaluation(decision: .ask, ruleMatched: r, reason: "flagged for review")
         }
         if let bl = blocklist {
@@ -102,10 +107,10 @@ public enum RuleEngine {
         return Evaluation(decision: .allow, ruleMatched: nil, reason: nil)
     }
 
-    static func firstMatch(_ payload: HookPayload, in rules: [Rule]) -> String? {
+    static func firstMatch(_ payload: HookPayload, command: String?, in rules: [Rule]) -> String? {
         for rule in rules {
             if let tool = rule.tool, tool != payload.toolName { continue }
-            if let pattern = rule.commandRegex, let cmd = payload.toolInput?.command,
+            if let pattern = rule.commandRegex, let cmd = command,
                regexMatches(pattern, cmd) {
                 return pattern
             }

@@ -26,9 +26,10 @@ public final class AuditIngestor {
         try? String(v).write(toFile: offsetPath, atomically: true, encoding: .utf8)
     }
 
-    /// Ingest any complete new lines. Returns the number of rows inserted.
+    /// Ingest any complete new lines. Returns the number of rows inserted. `host` tags every row
+    /// ("local" for the Mac's own audit; an SSH alias for a remote's pulled audit).
     @discardableResult
-    public func ingestNew() throws -> Int {
+    public func ingestNew(host: String = "local") throws -> Int {
         guard let fh = FileHandle(forReadingAtPath: auditPath) else { return 0 }
         defer { try? fh.close() }
 
@@ -46,10 +47,13 @@ public final class AuditIngestor {
         try db.dbQueue.write { db in
             for line in lines {
                 guard let entry = try? JSONDecoder().decode(AuditEntry.self, from: Data(line)) else { continue }
+                // Namespace the session id the same way SessionIngestor does, so a remote audit row
+                // joins to its remote session (and local stays bare).
+                let sid = entry.sessionId.map { SessionIngestor.namespacedId(host: host, sessionId: $0) }
                 var rec = AuditRecord(
-                    id: nil, ts: entry.ts, sessionId: entry.sessionId, promptId: nil,
+                    id: nil, ts: entry.ts, sessionId: sid, promptId: nil,
                     tool: entry.tool, command: entry.command,
-                    decision: entry.decision, ruleMatched: entry.ruleMatched
+                    decision: entry.decision, ruleMatched: entry.ruleMatched, host: host
                 )
                 try rec.insert(db)
                 count += 1

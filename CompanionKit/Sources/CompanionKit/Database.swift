@@ -67,6 +67,17 @@ public final class AppDatabase {
                 t.column("cache_write_per_mtok", .double)
             }
         }
+        // v2: a `host` dimension on every per-session/per-decision row. Local data is `'local'`;
+        // remote-SSH rows carry the SSH alias (see remote-ssh.spec.md). NOT NULL + DEFAULT 'local'
+        // backfills existing rows transparently, so local behaviour is unchanged.
+        m.registerMigration("v2") { db in
+            for table in ["sessions", "tool_events", "token_usage", "audit"] {
+                try db.alter(table: table) { t in
+                    t.add(column: "host", .text).notNull().defaults(to: "local")
+                }
+            }
+            try db.create(index: "idx_sessions_host", on: "sessions", columns: ["host"])
+        }
         return m
     }
 }

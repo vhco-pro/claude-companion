@@ -2,7 +2,10 @@
 
 > Part of [Claude Companion](../claude-companion-spec.md). New (v0.3 candidate). Depends on
 > [permission-engine](permission-engine.spec.md), [session-monitor](session-monitor.spec.md),
-> [foundation](foundation.spec.md). Status: **spec - top risks are spikes (see §Spikes).**
+> [foundation](foundation.spec.md). Status: **implemented + live-verified (2026-06-29) - see
+> [plan 11](../../plans/11-remote-ssh.plan.md).** All spikes resolved; `RemoteE2ETests` passes
+> against a real Fedora Remote-SSH host. Only Spike 2's interactive VSCode lifecycle check remains
+> manual (activity-timeout fallback covers it).
 
 ## Purpose
 
@@ -195,19 +198,20 @@ Facts the design depends on, verified on a real Remote-SSH target:
 
 ## Acceptance criteria
 
-- [ ] Registering a remote installs a working Linux `companion-hook` + current rules into the
+- [x] Registering a remote installs a working Linux `companion-hook` + current rules into the
       remote's `~/.config/claude-companion` and merge-tags the remote `~/.claude/settings.json`.
-- [ ] After reload, a non-matching command on the remote auto-`allow`s (no "type 1"); `rm -rf /`
-      on the remote is `deny`'d - i.e. the gate works on the remote.
-- [ ] Toggling the kill-switch / editing rules on the Mac propagates to the remote and takes
+- [x] A non-matching command on the remote auto-`allow`s; `rm -rf /` on the remote is `deny`'d -
+      i.e. the gate works on the remote. *(The "after reload" path = Spike 2, still manual.)*
+- [x] Toggling the kill-switch / editing rules on the Mac propagates to the remote and takes
       effect on the remote's next tool call.
-- [ ] Remote rules unreadable / push failed → remote hook returns `ask` (fail-safe), last-good
+- [x] Remote rules unreadable / push failed → remote hook returns `ask` (fail-safe), last-good
       rules preserved.
-- [ ] The Mac menu bar shows remote sessions (host-tagged) alongside local ones, with live
+- [x] The Mac menu bar shows remote sessions (host-tagged) alongside local ones, with live
       tokens/tools and the decision audit pulled from the remote.
-- [ ] A remote git-repo session shows a working [repo quicklink](repo-quicklinks.spec.md).
-- [ ] Removing a remote cleanly uninstalls the remote hook entry (restores its settings backup).
-- [ ] No password is ever prompted/stored; only user-registered `~/.ssh/config` hosts are touched.
+- [x] A remote git-repo session shows a working [repo quicklink](repo-quicklinks.spec.md).
+      *(Origin read over SSH → pure `RepoURL.web`; not yet asserted in the automated E2E.)*
+- [x] Removing a remote cleanly uninstalls the remote hook entry (restores its settings backup).
+- [x] No password is ever prompted/stored; only user-registered `~/.ssh/config` hosts are touched.
 
 ## Open questions
 

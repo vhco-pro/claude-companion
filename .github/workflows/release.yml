@@ -53,3 +53,78 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: gh workflow run sync-claude-companion.yml --repo vhco-pro/homebrew-tap
+
+  # Cross-build the dependency-light companion-hook for Linux (x86_64 + aarch64) and attach the
+  # stripped static binaries + checksums to the just-published Release. The Mac app downloads the
+  # arch-matched hook on first remote-SSH registration (remote-ssh.spec.md, issue #5).
+  #
+  # Why a separate clean job (not the macOS release job): the hook must be built with a swift.org
+  # toolchain pinned to a version that HAS a static-linux SDK (6.2.3). Xcode's Swift (6.3.x) has no
+  # such SDK and silently wins on PATH if it shares a runner - so this job has no Xcode at all.
+  # Toolchain + SDK are pinned together as one unit (they drift independently).
+  linux-hook:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release upload onto the Release the `release` job created
+    env:
+      SWIFT_VERSION: "6.2.3"
+      SDK_URL: "https://download.swift.org/swift-6.2.3-release/static-sdk/swift-6.2.3-RELEASE/swift-6.2.3-RELEASE_static-linux-0.0.1.artifactbundle.tar.gz"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install swiftly + pinned Swift toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -O "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz"
+          tar zxf "swiftly-$(uname -m).tar.gz"
+          ./swiftly init --quiet-shell-followup --assume-yes --skip-install
+          . "$HOME/.local/share/swiftly/env.sh"
+          echo "$HOME/.local/share/swiftly/bin" >> "$GITHUB_PATH"
+          swiftly install "$SWIFT_VERSION" --use
+          swift --version
+
+      - name: Install the matching static-linux SDK
+        run: |
+          set -euo pipefail
+          . "$HOME/.local/share/swiftly/env.sh"
+          # Gotcha (Spike 1 #5): download.swift.org returns HTTP 200 + a tiny XML <Error> body for a
+          # missing artifact. Verify by SIZE, not status, before trusting the download.
+          curl -fL -o sdk.tar.gz "$SDK_URL"
+          SIZE=$(stat -c%s sdk.tar.gz)
+          test "$SIZE" -gt 100000000 || { echo "SDK download too small ($SIZE bytes) - aborting"; exit 1; }
+          # Local-file install needs no --checksum (the URL is the version pin).
+          swift sdk install sdk.tar.gz
+          swift sdk list
+
+      - name: Build, strip + checksum both arches
+        run: |
+          set -euo pipefail
+          . "$HOME/.local/share/swiftly/env.sh"
+          # llvm-strip handles cross-arch ELF (GNU strip on x86_64 can't strip the aarch64 binary).
+          TCBIN="$(dirname "$(which swiftc)")"
+          strip_elf() { "$TCBIN/llvm-strip" "$1" 2>/dev/null || "$TCBIN/llvm-objcopy" --strip-all "$1"; }
+          mkdir -p dist
+          for pair in "x86_64:x86_64-swift-linux-musl" "aarch64:aarch64-swift-linux-musl"; do
+            arch="${pair%%:*}"; sdk="${pair##*:}"
+            swift build --product companion-hook --swift-sdk "$sdk" -c release \
+              --package-path CompanionKit
+            out="dist/companion-hook-linux-$arch"
+            cp "CompanionKit/.build/$sdk/release/companion-hook" "$out"
+            strip_elf "$out"
+            file "$out"
+            ( cd dist && sha256sum "companion-hook-linux-$arch" > "companion-hook-linux-$arch.sha256" )
+          done
+          ls -lh dist
+
+      - name: Attach Linux hooks to the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            dist/companion-hook-linux-x86_64 dist/companion-hook-linux-x86_64.sha256 \
+            dist/companion-hook-linux-aarch64 dist/companion-hook-linux-aarch64.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber

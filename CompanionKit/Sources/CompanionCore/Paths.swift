@@ -25,4 +25,28 @@ public enum Paths {
     public static var auditLog: String { configDir + "/audit.ndjson" }
     public static var auditOffset: String { configDir + "/audit.offset" }
     public static var database: String { configDir + "/companion.db" }
+
+    // MARK: Remote-SSH (remote-ssh.spec.md)
+
+    /// App-owned list of registered remote hosts (written by the Remotes UI). Separate from the
+    /// user-owned config.yaml so app writes never clobber the user's comments - same pattern as
+    /// rules.local.yaml.
+    public static var remotesFile: String { configDir + "/remotes.yaml" }
+    /// Per-host volatile state (pull offsets, last-sync, status) - app-owned sidecars, not hand-edited.
+    public static var remotesDir: String { configDir + "/remotes" }
+    public static func remoteState(_ alias: String) -> String {
+        remotesDir + "/" + sanitizeAlias(alias) + ".state.json"
+    }
+    /// Cache of downloaded Linux hooks, keyed by app version + arch (shared across all hosts).
+    public static var linuxHooksDir: String { configDir + "/linux-hooks" }
+    public static func linuxHook(version: String, arch: String) -> String {
+        linuxHooksDir + "/" + version + "/companion-hook-linux-" + arch
+    }
+
+    /// SSH aliases are filename-safe in practice, but defensively map anything outside
+    /// [A-Za-z0-9._-] to '_' so an alias can never escape the remotes dir.
+    public static func sanitizeAlias(_ alias: String) -> String {
+        let ok = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
+        return String(alias.map { ok.contains($0) ? $0 : "_" })
+    }
 }

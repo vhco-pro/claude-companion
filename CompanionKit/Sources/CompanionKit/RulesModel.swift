@@ -8,14 +8,18 @@ public struct RulesFile: Decodable, Sendable {
     public var autoAccept: Bool
     public var deny: [RuleSpec]
     public var ask: [RuleSpec]
+    /// Shipped allow-tier overrides: safe tooling that would otherwise trip an `ask` via an
+    /// incidental pattern in an argument/message. Checked after deny, so it never clears a deny.
+    public var allow: [RuleSpec]
 
-    enum CodingKeys: String, CodingKey { case autoAccept = "auto_accept", deny, ask }
+    enum CodingKeys: String, CodingKey { case autoAccept = "auto_accept", deny, ask, allow }
 
     public init(from decoder: Decoder) throws {
         let c = try? decoder.container(keyedBy: CodingKeys.self)
         autoAccept = (try? c?.decodeIfPresent(Bool.self, forKey: .autoAccept)) ?? true
         deny = (try? c?.decodeIfPresent([RuleSpec].self, forKey: .deny)) ?? []
         ask = (try? c?.decodeIfPresent([RuleSpec].self, forKey: .ask)) ?? []
+        allow = (try? c?.decodeIfPresent([RuleSpec].self, forKey: .allow)) ?? []
     }
 }
 
