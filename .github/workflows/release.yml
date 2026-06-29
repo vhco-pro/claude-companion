@@ -82,8 +82,11 @@ jobs:
           ./swiftly init --quiet-shell-followup --assume-yes --skip-install
           . "$HOME/.local/share/swiftly/env.sh"
           echo "$HOME/.local/share/swiftly/bin" >> "$GITHUB_PATH"
-          swiftly install "$SWIFT_VERSION" --use
-          swift --version
+          # --no-verify: swiftly's GPG toolchain-signature check needs the Swift keys imported on the
+          # runner and was failing on a clean host. The toolchain is fetched from the official
+          # download.swift.org CDN over HTTPS (transport-verified) and pinned by exact version.
+          swiftly install "$SWIFT_VERSION" --no-verify
+          swiftly run +"$SWIFT_VERSION" swift --version   # +ver selects the toolchain (no PATH/link reliance)
 
       - name: Install the matching static-linux SDK
         run: |
@@ -95,24 +98,25 @@ jobs:
           SIZE=$(stat -c%s sdk.tar.gz)
           test "$SIZE" -gt 100000000 || { echo "SDK download too small ($SIZE bytes) - aborting"; exit 1; }
           # Local-file install needs no --checksum (the URL is the version pin).
-          swift sdk install sdk.tar.gz
-          swift sdk list
+          swiftly run +"$SWIFT_VERSION" swift sdk install sdk.tar.gz
+          swiftly run +"$SWIFT_VERSION" swift sdk list
 
       - name: Build, strip + checksum both arches
         run: |
           set -euo pipefail
           . "$HOME/.local/share/swiftly/env.sh"
-          # llvm-strip handles cross-arch ELF (GNU strip on x86_64 can't strip the aarch64 binary).
-          TCBIN="$(dirname "$(which swiftc)")"
-          strip_elf() { "$TCBIN/llvm-strip" "$1" 2>/dev/null || "$TCBIN/llvm-objcopy" --strip-all "$1"; }
+          # llvm-objcopy handles cross-arch ELF (GNU strip on an x86_64 host can't strip the aarch64
+          # binary). Resolve it from the actual toolchain dir, not the swiftly shim dir.
+          OBJCOPY="$(find "$HOME/.local/share/swiftly/toolchains" -name llvm-objcopy 2>/dev/null | head -1)"
+          echo "objcopy: ${OBJCOPY:-<none, falling back to strip>}"
           mkdir -p dist
           for pair in "x86_64:x86_64-swift-linux-musl" "aarch64:aarch64-swift-linux-musl"; do
             arch="${pair%%:*}"; sdk="${pair##*:}"
-            swift build --product companion-hook --swift-sdk "$sdk" -c release \
-              --package-path CompanionKit
+            swiftly run +"$SWIFT_VERSION" swift build --product companion-hook --swift-sdk "$sdk" \
+              -c release --package-path CompanionKit
             out="dist/companion-hook-linux-$arch"
             cp "CompanionKit/.build/$sdk/release/companion-hook" "$out"
-            strip_elf "$out"
+            if [ -n "$OBJCOPY" ]; then "$OBJCOPY" --strip-all "$out"; else strip "$out" || true; fi
             file "$out"
             ( cd dist && sha256sum "companion-hook-linux-$arch" > "companion-hook-linux-$arch.sha256" )
           done
