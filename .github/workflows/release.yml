@@ -128,9 +128,13 @@ jobs:
       - name: Attach Linux hooks to the Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release.outputs.tag }}
         run: |
           set -euo pipefail
+          # Resolve the tag directly from the just-published Release. (A reusable workflow only
+          # surfaces outputs declared under on.workflow_call.outputs, so needs.release.outputs.tag
+          # is empty here; this job runs after `release` succeeds, so the latest Release is ours.)
+          TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          echo "attaching Linux hooks to $TAG"
           gh release upload "$TAG" \
             dist/companion-hook-linux-x86_64 dist/companion-hook-linux-x86_64.sha256 \
             dist/companion-hook-linux-aarch64 dist/companion-hook-linux-aarch64.sha256 \
