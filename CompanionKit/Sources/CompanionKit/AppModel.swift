@@ -153,6 +153,7 @@ public final class AppModel {
         lastNotifiedAuditId = currentMaxAuditId()
         denyNotifier.requestAuth()
         refreshInstallState()
+        if hookInstalled { stageHook() }   // keep the staged hook current after an app upgrade
         if let si = sessionIngestor {
             refreshSessions()
             tailer = JSONLTailer(ingestor: si, onUpdate: { [weak self] in self?.refreshSessions() })
@@ -345,13 +346,23 @@ public final class AppModel {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
+    /// Copy the embedded hook to the space-free staged path. Atomic (copy to a temp, then rename(2))
+    /// so a concurrent hook invocation never sees a missing/partial binary (which would fail OPEN).
+    /// No-ops when the staged hook already matches (same size) - so calling it on every launch is
+    /// cheap and keeps the staged binary current across app upgrades.
     private func stageHook() {
+        let fm = FileManager.default
         let embedded = Bundle.main.bundlePath + "/Contents/Helpers/companion-hook"
-        try? FileManager.default.createDirectory(atPath: Paths.configDir, withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(atPath: stagedHookPath)
-        if (try? FileManager.default.copyItem(atPath: embedded, toPath: stagedHookPath)) != nil {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stagedHookPath)
-        }
+        guard fm.fileExists(atPath: embedded) else { return }
+        let eSize = (try? fm.attributesOfItem(atPath: embedded))?[.size] as? Int
+        let sSize = (try? fm.attributesOfItem(atPath: stagedHookPath))?[.size] as? Int
+        if let e = eSize, e == sSize { return }   // already current
+        try? fm.createDirectory(atPath: Paths.configDir, withIntermediateDirectories: true)
+        let tmp = stagedHookPath + ".staging"
+        try? fm.removeItem(atPath: tmp)
+        guard (try? fm.copyItem(atPath: embedded, toPath: tmp)) != nil else { return }
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp)
+        if rename(tmp, stagedHookPath) != 0 { try? fm.removeItem(atPath: tmp) }   // atomic replace
     }
 
     /// rtk is optional + not bundled; if it's installed we wire its hook for reproducibility (A).

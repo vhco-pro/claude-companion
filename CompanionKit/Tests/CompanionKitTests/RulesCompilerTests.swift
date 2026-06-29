@@ -283,6 +283,38 @@ final class RulesCompilerTests: XCTestCase {
         XCTAssertEqual(decide("git push origin main --force"), .ask)
     }
 
+    func testShippedAllowAlwaysAppliesAndDedupes() throws {
+        // A user's allow-less rules.yaml (the copied-once case) still gets the shipped allow tier.
+        let base = "auto_accept: true\nask:\n  - { tool: Bash, command_regex: '\\bgit\\s+push\\b' }\n"
+        let shipped = [RuleSpec(tool: "Bash", commandRegex: #"\bgh\s+pr\b"#)]
+        let r = try RulesCompiler.compileMerged(baseYAML: base, localYAML: nil, shippedAllow: shipped)
+        XCTAssertEqual(r.compiled.allow.count, 1)
+        XCTAssertEqual(RuleEngine.evaluate(
+            HookPayload(hookEventName: "PreToolUse", toolName: "Bash",
+                        toolInput: ToolInput(command: "gh pr create --body x")), rules: r.compiled).decision, .allow)
+
+        // De-dupe: if the user's rules.yaml ALREADY carries the same allow, it isn't doubled.
+        let withAllow = base + "allow:\n  - { tool: Bash, command_regex: '\\bgh\\s+pr\\b' }\n"
+        let r2 = try RulesCompiler.compileMerged(baseYAML: withAllow, localYAML: nil, shippedAllow: shipped)
+        XCTAssertEqual(r2.compiled.allow.count, 1, "shipped allow must dedupe against the user's own")
+    }
+
+    func testRulesManagerCompileInjectsBundledAllowTier() throws {
+        // End-to-end: a rules.yaml with NO allow section still compiles WITH the bundled allow tier.
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(atPath: dir) }
+        try "auto_accept: true\nask: []\n".write(toFile: dir + "/rules.yaml", atomically: true, encoding: .utf8)
+        let mgr = RulesManager(rulesPath: dir + "/rules.yaml",
+                               localPath: dir + "/rules.local.yaml",
+                               compiledPath: dir + "/rules.compiled.json")
+        try mgr.compile()
+        let compiled = try JSONDecoder().decode(
+            CompiledRules.self, from: Data(contentsOf: URL(fileURLWithPath: dir + "/rules.compiled.json")))
+        XCTAssertGreaterThan(compiled.allow.count, 0, "bundled allow tier should be injected")
+        XCTAssertEqual(RuleEngine.evaluate(
+            HookPayload(hookEventName: "PreToolUse", toolName: "Bash",
+                        toolInput: ToolInput(command: "gh run list")), rules: compiled).decision, .allow)
+    }
+
     func testApprovalConfigDefaultsAndParses() throws {
         XCTAssertTrue(AppConfig.default.approval.notifyOnDeny, "deny notifications should default on")
         let off = try YAMLDecoder().decode(AppConfig.self, from: "approval:\n  notify_on_deny: false\n")

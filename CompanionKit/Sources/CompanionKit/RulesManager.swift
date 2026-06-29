@@ -29,9 +29,21 @@ public final class RulesManager {
     }
 
     /// Compile rules.yaml (+ rules.local.yaml overrides) → rules.compiled.json. Warnings ([] = clean).
+    /// The SHIPPED allow tier is always merged in (from the bundled defaults), so an existing user
+    /// whose copied-once rules.yaml predates the allow tier still gets the safe-tooling allowances -
+    /// allow can never weaken a deny, so this is safe to always apply.
     @discardableResult
     public func compile() throws -> [String] {
-        try RulesCompiler.compileFile(yamlPath: rulesPath, localPath: localPath, outPath: compiledPath)
+        try RulesCompiler.compileFile(yamlPath: rulesPath, localPath: localPath, outPath: compiledPath,
+                                      shippedAllow: Self.bundledDefaultAllow())
+    }
+
+    /// The `allow:` tier from the bundled default-rules.yaml (empty if it can't be read).
+    static func bundledDefaultAllow() -> [RuleSpec] {
+        guard let url = Bundle.module.url(forResource: "default-rules", withExtension: "yaml"),
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              let file = try? YAMLDecoder().decode(RulesFile.self, from: text) else { return [] }
+        return file.allow
     }
 
     // MARK: - Local overrides (allow-tier.spec.md). The app only ever writes rules.local.yaml.
