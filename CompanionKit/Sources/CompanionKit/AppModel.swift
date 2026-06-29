@@ -362,6 +362,10 @@ public final class AppModel {
         try? fm.removeItem(atPath: tmp)
         guard (try? fm.copyItem(atPath: embedded, toPath: tmp)) != nil else { return }
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp)
+        // The embedded hook is copied out of the (often quarantined) app bundle, so it inherits
+        // com.apple.quarantine. A quarantined ad-hoc binary is killed by Gatekeeper when Claude Code
+        // executes it - which makes the gate vanish/flap. Strip it so the staged hook always runs.
+        tmp.withCString { _ = removexattr($0, "com.apple.quarantine", 0) }   // ENOATTR if absent → fine
         if rename(tmp, stagedHookPath) != 0 { try? fm.removeItem(atPath: tmp) }   // atomic replace
     }
 
