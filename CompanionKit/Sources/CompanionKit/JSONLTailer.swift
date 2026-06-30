@@ -74,11 +74,17 @@ public final class JSONLTailer: @unchecked Sendable {
         guard let lastNL = bytes.lastIndex(of: 0x0A) else { return }  // wait for a complete line
         let consumable = Data(bytes[0...lastNL])
         var items: [(event: ParsedEvent, at: Date)] = []
+        // Carry the last real timestamp forward: a trailing timestamp-less entry (e.g. a `pr-link`
+        // line) must NOT be stamped `Date()` - that would jump the session's last_seen to sync-time
+        // and make a long-dead session look active. Only a batch with zero real timestamps falls
+        // back to now.
+        var lastValid: Date?
         for lineData in consumable.split(separator: 0x0A, omittingEmptySubsequences: true) {
             guard let line = String(data: Data(lineData), encoding: .utf8),
                   let event = JSONLParser.parse(line) else { continue }
-            let ts = event.timestamp.flatMap(Self.parseTimestamp) ?? Date()
-            items.append((event, ts))
+            let parsed = event.timestamp.flatMap(Self.parseTimestamp)
+            if let parsed { lastValid = parsed }
+            items.append((event, parsed ?? lastValid ?? Date()))
         }
         ingestor.ingestBatch(items, host: host)   // one transaction for the whole file
         offsets[path] = start + UInt64(lastNL + 1)

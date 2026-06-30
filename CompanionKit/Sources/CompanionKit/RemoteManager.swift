@@ -94,6 +94,22 @@ public struct RemoteManager: Sendable {
         return true
     }
 
+    /// Re-assert that our hook is wired into the remote `settings.json`. Claude Code rewrites that
+    /// file on its own (e.g. a `/config` change) and can drop our `hooks` block, silently disabling
+    /// the gate. Cheap grep for our `companion-hook` marker; only if absent do the idempotent
+    /// pull-merge-push `installSettings` (preserving the user's other keys). Returns whether it
+    /// re-wired (so the caller can nudge a window reload). Called by the periodic sync.
+    @discardableResult
+    public func ensureSettingsWired(host: String, paths: RemotePaths? = nil) throws -> Bool {
+        let rp = try paths ?? remotePaths(host: host)
+        let wired = ((try? ssh.run(host: host, command:
+            "grep -qF companion-hook \(sh(rp.settings)) 2>/dev/null && echo y || echo n"))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)) == "y"
+        guard !wired else { return false }
+        try installSettings(host: host, paths: rp)
+        return true
+    }
+
     /// Push the compiled rules + blocklist to a remote (takes effect on its next tool call, since
     /// the hook reads them fresh). A failed push leaves the last-good remote files intact, so the
     /// remote keeps gating with the previous rules (never silently degrades).

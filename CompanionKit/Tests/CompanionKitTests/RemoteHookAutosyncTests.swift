@@ -14,6 +14,7 @@ final class RemoteHookAutosyncTests: XCTestCase {
         var markerValue = "0.0.1"          // remote .hook-version contents
         var uname = "x86_64"
         var failUpload = false
+        var settingsWired = true           // what the grep for our marker in settings.json reports
         var uploads: [(local: String, remote: String)] = []
         var commands: [String] = []
         var dataFor: ((String) -> Data)?   // override runData per command
@@ -22,6 +23,7 @@ final class RemoteHookAutosyncTests: XCTestCase {
             commands.append(command)
             if command.contains("$HOME") { return "/home/m" }
             if command.contains("cat") && command.contains(".hook-version") { return markerValue }
+            if command.contains("grep") && command.contains("companion-hook") { return settingsWired ? "y" : "n" }
             if command.contains("uname") { return uname }
             return ""
         }
@@ -70,6 +72,25 @@ final class RemoteHookAutosyncTests: XCTestCase {
         XCTAssertFalse(pushed)
         XCTAssertEqual(fake.uploads.count, 0)
         XCTAssertFalse(fake.commands.contains { $0.contains("uname") })   // never even detected arch
+    }
+
+    // MARK: ensureSettingsWired (plan 15 fix 1) - self-heal the settings.json hook wiring
+
+    func testEnsureSettingsWiredNoOpWhenAlreadyWired() throws {
+        let fake = FakeSSH(); fake.settingsWired = true
+        let mgr = RemoteManager(ssh: fake, hookProvider: LinuxHookProvider(version: "1", repoSlug: "t/r"))
+        let rewired = try mgr.ensureSettingsWired(host: "h", paths: RemotePaths(home: "/home/m"))
+        XCTAssertFalse(rewired)
+        XCTAssertTrue(fake.uploads.isEmpty, "must not touch settings when already wired")
+    }
+
+    func testEnsureSettingsWiredReinstallsWhenMarkerMissing() throws {
+        let fake = FakeSSH(); fake.settingsWired = false
+        let mgr = RemoteManager(ssh: fake, hookProvider: LinuxHookProvider(version: "1", repoSlug: "t/r"))
+        let rewired = try mgr.ensureSettingsWired(host: "h", paths: RemotePaths(home: "/home/m"))
+        XCTAssertTrue(rewired)
+        XCTAssertTrue(fake.uploads.contains { $0.remote == "/home/m/.claude/settings.json" },
+                      "missing wiring → pull-merge-push settings.json")
     }
 
     // MARK: reload-reminder once-per-version (pure)

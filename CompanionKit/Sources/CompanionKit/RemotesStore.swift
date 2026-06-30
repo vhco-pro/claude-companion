@@ -65,19 +65,21 @@ public struct RemoteState: Codable, Sendable, Equatable {
     public var reachable: Bool
     public var hookVersion: String?              // hook version last pushed to the host
     public var lastRemindedHookVersion: String?  // version we last nudged the user to reload for
+    public var needsReload: Bool                 // settings were re-wired this sync → nudge a reload
 
     public init(lastSync: Date? = nil, lastError: String? = nil,
                 reachable: Bool = false, hookVersion: String? = nil,
-                lastRemindedHookVersion: String? = nil) {
+                lastRemindedHookVersion: String? = nil, needsReload: Bool = false) {
         self.lastSync = lastSync
         self.lastError = lastError
         self.reachable = reachable
         self.hookVersion = hookVersion
         self.lastRemindedHookVersion = lastRemindedHookVersion
+        self.needsReload = needsReload
     }
 
     enum CodingKeys: String, CodingKey {
-        case lastSync, lastError, reachable, hookVersion, lastRemindedHookVersion
+        case lastSync, lastError, reachable, hookVersion, lastRemindedHookVersion, needsReload
     }
     public init(from d: Decoder) throws {   // tolerate old sidecars without the new key
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -86,6 +88,7 @@ public struct RemoteState: Codable, Sendable, Equatable {
         reachable = (try? c.decodeIfPresent(Bool.self, forKey: .reachable)) ?? false
         hookVersion = try c.decodeIfPresent(String.self, forKey: .hookVersion)
         lastRemindedHookVersion = try c.decodeIfPresent(String.self, forKey: .lastRemindedHookVersion)
+        needsReload = (try? c.decodeIfPresent(Bool.self, forKey: .needsReload)) ?? false
     }
 
     /// Nudge the user to reload a host's VSCode window iff a NEW hook version was pushed (once per

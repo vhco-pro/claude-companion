@@ -66,6 +66,14 @@ public final class RemoteSync: @unchecked Sendable {
                 }
             } catch { hookError = "hook update failed: \(Self.describe(error))" }
 
+            // Self-heal the settings.json wiring (Claude Code can drop our hooks block on its own
+            // edits). Best-effort + isolated: a failure here must not block the pull either.
+            do {
+                if try manager.ensureSettingsWired(host: remote.alias, paths: rp) {
+                    state.needsReload = true                        // re-wired → nudge a window reload
+                }
+            } catch { hookError = (hookError.map { $0 + "; " } ?? "") + "settings re-wire failed: \(Self.describe(error))" }
+
             try mirror(host: remote.alias, remotePath: rp.auditLog, localPath: auditMirror(remote.alias))
             let ai = AuditIngestor(db: db, auditPath: auditMirror(remote.alias), offsetPath: auditOffset(remote.alias))
             _ = try ai.ingestNew(host: remote.alias)
