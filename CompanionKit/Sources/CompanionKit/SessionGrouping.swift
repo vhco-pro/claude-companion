@@ -16,6 +16,7 @@ public struct ProjectSessionGroup: Identifiable, Sendable, Equatable {
     public let recentTools: [String]   // from the newest member
     public let host: String            // from the newest member ("local" or an SSH alias)
     public let lastSeen: Date?         // latest activity in the group
+    public let repoURL: URL?           // git repo web URL of the project, if any (newest member)
 
     public var sessionCount: Int { sessions.count }
 }
@@ -101,7 +102,8 @@ public enum SessionGrouping {
                 models: models,
                 recentTools: newest.recentTools,
                 host: newest.host,
-                lastSeen: newest.lastSeen
+                lastSeen: newest.lastSeen,
+                repoURL: sorted.compactMap(\.repoURL).first
             )
         }
 

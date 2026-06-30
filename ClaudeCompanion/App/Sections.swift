@@ -191,21 +191,27 @@ struct SessionsList: View {
                                 .onTapGesture {
                                     expandedGroup = (expandedGroup == g.id) ? nil : g.id
                                 }
-                            // Expanded: the individual member sessions, each tappable for its detail.
+                            // Expanded. A single-session project goes straight to its detail (the
+                            // group card already IS that session - no duplicate card). A multi-session
+                            // project lists its member sessions, each tappable to its own detail.
                             if expandedGroup == g.id {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(g.sessions) { s in
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            SessionCard(s: s)
-                                                .contentShape(Rectangle())
-                                                .onTapGesture {
-                                                    expandedSession = (expandedSession == s.id) ? nil : s.id
-                                                }
-                                            if expandedSession == s.id { sessionDetail(s) }
+                                if g.sessionCount == 1, let only = g.sessions.first {
+                                    sessionDetail(only)
+                                } else {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ForEach(g.sessions) { s in
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                SessionCard(s: s)
+                                                    .contentShape(Rectangle())
+                                                    .onTapGesture {
+                                                        expandedSession = (expandedSession == s.id) ? nil : s.id
+                                                    }
+                                                if expandedSession == s.id { sessionDetail(s) }
+                                            }
                                         }
                                     }
+                                    .padding(.leading, 12)
                                 }
-                                .padding(.leading, 12)
                             }
                         }
                     }
@@ -336,6 +342,20 @@ struct ProjectGroupCard: View {
                 if let c = g.costUSD { Text(Format.cost(c)) }
             }
             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            // Clickable git repo link right on the card - no need to expand to reach it.
+            if let url = g.repoURL {
+                Link(destination: url) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text(PanelFormat.repoLabel(url)).underline()
+                        Image(systemName: "arrow.up.right").font(.system(size: 8))
+                    }
+                    .font(.caption2).lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.link)
+                .help("Open \(url.absoluteString)")
+            }
             if !g.recentTools.isEmpty {
                 Text(g.recentTools.reversed().joined(separator: " › "))
                     .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)

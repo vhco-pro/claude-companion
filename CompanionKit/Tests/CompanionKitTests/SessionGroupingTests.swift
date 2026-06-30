@@ -7,11 +7,11 @@ struct SessionGroupingTests {
                          tools: Int, inTok: Int = 0, outTok: Int = 0, cache: Int = 0,
                          cost: Double? = nil, seen: Date?, active: Bool = true,
                          recent: [String] = [], host: String = "local",
-                         working: String? = nil) -> SessionSummary {
+                         working: String? = nil, repo: URL? = nil) -> SessionSummary {
         SessionSummary(id: id, projectName: name, model: model, toolCount: tools,
                        inputTokens: inTok, outputTokens: outTok, cacheTokens: cache, costUSD: cost,
                        projectPath: path, startedAt: nil, lastSeen: seen, active: active,
-                       recentTools: recent, repoURL: nil, host: host, workingPath: working)
+                       recentTools: recent, repoURL: repo, host: host, workingPath: working)
     }
 
     @Test func aggregatesMembersOfSameProject() {
@@ -118,12 +118,14 @@ struct SessionGroupingTests {
 
     @Test func singleSessionGroupIntact() {
         let now = Date(timeIntervalSince1970: 5_000)
+        let url = URL(string: "https://github.com/me/solo")!
         let s = [session("a", path: "/code/solo", name: "solo", model: "opus", tools: 9,
-                         cost: 1.5, seen: now, recent: ["Read", "Edit"])]
+                         cost: 1.5, seen: now, recent: ["Read", "Edit"], repo: url)]
         let g = SessionGrouping.groupByProject(s)
         #expect(g.count == 1)
         #expect(g[0].sessionCount == 1)
         #expect(g[0].toolCount == 9)
         #expect(g[0].recentTools == ["Read", "Edit"])
+        #expect(g[0].repoURL == url)   // repo link surfaces on the group card
     }
 }

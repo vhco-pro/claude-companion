@@ -36,12 +36,14 @@ CompanionKit; UI composes it in both surfaces. No DB/ingest/id changes.
   grouping splits a monorepo root by working subfolder. **✅ Done** — 3 tests (8 in suite).
 
 ### P2 - Sessions tab uses group cards
-- New `ProjectGroupCard` (in Sections): name + `N sessions` badge (hidden when 1) + summed
-  tools/tokens/cost + model chips + newest tool chain + host chip. Tap → expand to member
-  `SessionCard` + per-session detail (reuse existing views).
-- `SessionsList` iterates `model.activeSessionGroups` instead of the flat `active` list.
-- *Verify:* vega shows one card "3 sessions" with summed totals; expand lists the 3; the `?` card is
-  gone; single-session projects look normal.
+- New `ProjectGroupCard` (in Sections): `parent / leaf` breadcrumb + `N sessions` badge (hidden when
+  1) + summed tools/tokens/cost + model chips + newest tool chain + host chip + a clickable git
+  **repo link** (group carries `repoURL` from its newest member).
+- `SessionsList` iterates `model.activeSessionGroups`. **Single-session** group → expand straight to
+  that session's `sessionDetail` (no duplicate `SessionCard`). **Multi-session** → expand to member
+  `SessionCard`s, each → its detail.
+- *Verify:* a 1-session project (ssm-connect) shows one card with a clickable repo link and expands
+  to detail, not a second identical card; vega shows "3 sessions" + expands to the 3.
 
 ### P3 - Popover glance: top-3 groups + recent decisions
 - Popover adds a compact **Active** block: top 3 `activeSessionGroups` as one-liners

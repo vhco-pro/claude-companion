@@ -53,10 +53,14 @@ tighten what counts as active.
   grouping layer so nothing else regresses.
 
 ### 3. UI (both surfaces, via the shared views)
-- **Sessions tab (dashboard):** one **group card** per project: name + a `N sessions` badge +
-  aggregated tools/tokens/cost + distinct model chips + the newest session's tool chain. Tap to
-  expand → the individual member sessions (today's `SessionCard` + per-session detail), so nothing
-  is lost. Host chip carries through for remote groups.
+- **Sessions tab (dashboard):** one **group card** per project: `parent / leaf` breadcrumb + a
+  `N sessions` badge + aggregated tools/tokens/cost + distinct model chips + the newest session's
+  tool chain + a **clickable git repo link** when the project is a repo (no need to expand for it).
+  Host chip carries through for remote groups.
+- **Single vs multiple:** a **single-session** group expands straight to that session's **detail**
+  (cwd, repo, per-tool breakdown) - no redundant duplicate card. A **multi-session** group expands
+  to the member sessions (`SessionCard` each → its detail). So a 1-session project never shows the
+  same row twice.
 - **Popover (glance):** the **top 3 groups** as compact one-liners (`vega · 3 sessions · $1027`) so
   you see what's busy without opening the dashboard - pairs with the popover's recent-decisions
   glance (see [panel-redesign](panel-redesign.spec.md)).
