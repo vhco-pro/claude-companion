@@ -19,6 +19,19 @@ public struct SessionSummary: Identifiable, Sendable, Equatable {
     public let recentTools: [String]   // newest-first
     public let repoURL: URL?           // web URL of the cwd's git repo, if any (resolved + cached)
     public let host: String            // "local" or the SSH alias the session runs on
+    public let workingPath: String?    // the subfolder actually being worked in (derived from edits)
+
+    public init(id: String, projectName: String, model: String?, toolCount: Int,
+                inputTokens: Int, outputTokens: Int, cacheTokens: Int, costUSD: Double?,
+                projectPath: String?, startedAt: Date?, lastSeen: Date?, active: Bool,
+                recentTools: [String], repoURL: URL?, host: String, workingPath: String? = nil) {
+        self.id = id; self.projectName = projectName; self.model = model
+        self.toolCount = toolCount; self.inputTokens = inputTokens; self.outputTokens = outputTokens
+        self.cacheTokens = cacheTokens; self.costUSD = costUSD; self.projectPath = projectPath
+        self.startedAt = startedAt; self.lastSeen = lastSeen; self.active = active
+        self.recentTools = recentTools; self.repoURL = repoURL; self.host = host
+        self.workingPath = workingPath
+    }
 }
 
 /// Turns parsed JSONL events into rows in the app DB and answers session summaries.
@@ -124,9 +137,18 @@ public final class SessionIngestor {
 
                 let projectPath: String? = row["project_path"]
                 let active = lastSeen.map { now.timeIntervalSince($0) < activeWindow } ?? false
+                // Derive the actual working subfolder from the files this session EDITS (the cwd is
+                // only the launch dir). Edits only - reads across other repos are incidental.
+                let edits = try String.fetchAll(db, sql: """
+                    SELECT target_path FROM tool_events
+                    WHERE session_id = ? AND target_path IS NOT NULL AND target_path != ''
+                      AND tool IN ('Edit','Write','MultiEdit','NotebookEdit')
+                    ORDER BY id DESC LIMIT 300
+                    """, arguments: [id])
+                let workingPath = SessionGrouping.workingDirectory(projectPath: projectPath, editPaths: edits)
                 return SessionSummary(
                     id: id,
-                    projectName: Self.friendlyProject(projectPath),
+                    projectName: Self.friendlyProject(workingPath ?? projectPath),
                     model: model,
                     toolCount: toolCount,
                     inputTokens: i,
@@ -138,8 +160,11 @@ public final class SessionIngestor {
                     lastSeen: lastSeen,
                     active: active,
                     recentTools: recent,
-                    repoURL: repoURL(projectPath),
-                    host: (row["host"] as String?) ?? "local"
+                    // Resolve the repo from the working subfolder, not the launch cwd: a session
+                    // started at a monorepo root (not itself a repo) still links to the repo it works in.
+                    repoURL: repoURL(workingPath ?? projectPath),
+                    host: (row["host"] as String?) ?? "local",
+                    workingPath: workingPath
                 )
             }
         }) ?? []

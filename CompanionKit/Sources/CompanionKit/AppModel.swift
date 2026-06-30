@@ -26,6 +26,13 @@ public final class AppModel {
     public private(set) var blocklistEntries: [BlocklistEntry] = []
     public private(set) var sessions: [SessionSummary] = []
 
+    /// Active sessions collapsed by project (session-grouping.spec.md). "Active" here is the
+    /// recency window AND an activity floor (≥1 tool call) - so empty/no-model sessions don't leak
+    /// in. Drives the Sessions tab + the popover's top-3 glance.
+    public var activeSessionGroups: [ProjectSessionGroup] {
+        SessionGrouping.groupByProject(sessions.filter { $0.active && $0.toolCount > 0 })
+    }
+
     public struct BlocklistEntry: Identifiable, Sendable {
         public let host: String
         public let malicious: Bool          // false = compromised
@@ -237,7 +244,9 @@ public final class AppModel {
     /// Resolve repo URLs for any not-yet-seen project paths off the main thread, then rebuild the
     /// summaries from the now-populated cache (a pure lookup) so the links appear.
     private func resolveRepoURLs() {
-        let pending = Set(sessions.compactMap(\.projectPath)).filter { !repoURLCache.keys.contains($0) }
+        // Resolve from the working subfolder where known (the launch cwd may not be a repo).
+        let pending = Set(sessions.compactMap { $0.workingPath ?? $0.projectPath })
+            .filter { !repoURLCache.keys.contains($0) }
         guard !pending.isEmpty else { return }
         Task.detached(priority: .utility) { [weak self] in
             var resolved: [String: URL?] = [:]
@@ -529,7 +538,7 @@ public final class AppModel {
             var err: String?
             do {
                 try await sync.register(Remote(alias: alias))
-                sync.syncOnce(Remote(alias: alias))
+                await sync.syncOnce(Remote(alias: alias))
                 try? sync.pushRules(to: Remote(alias: alias))
             } catch { err = RemoteSync.describe(error) }
             await MainActor.run {
@@ -571,10 +580,10 @@ public final class AppModel {
         guard let sync = remoteSync, let r = remotes.first(where: { $0.alias == alias }) else { return }
         remoteBusy.insert(alias)
         Task.detached { [weak self] in
-            sync.syncOnce(r)
+            await sync.syncOnce(r)
             await MainActor.run {
                 self?.remoteBusy.remove(alias); self?.refreshRemoteStates()
-                self?.mergeRemoteRepoURLs(); self?.refreshSessions()
+                self?.mergeRemoteRepoURLs(); self?.refreshSessions(); self?.checkReloadReminders()
             }
         }
     }
@@ -584,8 +593,25 @@ public final class AppModel {
         guard let sync = remoteSync, !remotes.isEmpty else { return }
         let rs = remotes
         Task.detached { [weak self] in
-            for r in rs { sync.syncOnce(r) }
-            await MainActor.run { self?.refreshRemoteStates(); self?.mergeRemoteRepoURLs(); self?.refreshSessions() }
+            for r in rs { await sync.syncOnce(r) }
+            await MainActor.run {
+                self?.refreshRemoteStates(); self?.mergeRemoteRepoURLs()
+                self?.refreshSessions(); self?.checkReloadReminders()
+            }
+        }
+    }
+
+    /// After a sync, if a host got a NEW hook pushed (its `hookVersion` advanced past what we last
+    /// reminded for), nudge the user to reload that VSCode window - once per version, not every cycle.
+    private func checkReloadReminders() {
+        for r in remotes {
+            var st = remoteStateStore.load(alias: r.alias)
+            if RemoteState.shouldRemindReload(hookVersion: st.hookVersion,
+                                              lastReminded: st.lastRemindedHookVersion) {
+                reloadReminderHost = r.alias
+                st.lastRemindedHookVersion = st.hookVersion
+                remoteStateStore.save(alias: r.alias, st)
+            }
         }
     }
 

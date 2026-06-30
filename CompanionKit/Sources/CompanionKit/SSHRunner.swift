@@ -27,6 +27,18 @@ public enum RemoteError: Error, Equatable, Sendable {
     }
 }
 
+/// The SSH operations RemoteManager/RemoteSync need. A protocol (not the concrete struct) so the
+/// SSH-driven paths - hook version-gate, settings merge, audit/session pull - can be unit-tested
+/// with a fake that records commands and returns canned output, instead of only via the gated E2E.
+public protocol SSHClient: Sendable {
+    @discardableResult func run(host: String, command: String) throws -> String
+    func runData(host: String, command: String) throws -> Data
+    func upload(localPath: String, to host: String, remotePath: String) throws
+    func download(from host: String, remotePath: String, to localPath: String) throws
+}
+
+extension SSHRunner: SSHClient {}
+
 /// Shells out to the system `ssh`/`scp` by ABSOLUTE path so it works from a login-item GUI app
 /// (which has a trimmed `PATH`). Always non-interactive: `BatchMode=yes` (never prompt for a
 /// password - we only support key/agent/Tailscale auth) + an explicit `ConnectTimeout` so an

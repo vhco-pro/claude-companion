@@ -63,14 +63,36 @@ public struct RemoteState: Codable, Sendable, Equatable {
     public var lastSync: Date?
     public var lastError: String?
     public var reachable: Bool
-    public var hookVersion: String?
+    public var hookVersion: String?              // hook version last pushed to the host
+    public var lastRemindedHookVersion: String?  // version we last nudged the user to reload for
 
     public init(lastSync: Date? = nil, lastError: String? = nil,
-                reachable: Bool = false, hookVersion: String? = nil) {
+                reachable: Bool = false, hookVersion: String? = nil,
+                lastRemindedHookVersion: String? = nil) {
         self.lastSync = lastSync
         self.lastError = lastError
         self.reachable = reachable
         self.hookVersion = hookVersion
+        self.lastRemindedHookVersion = lastRemindedHookVersion
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case lastSync, lastError, reachable, hookVersion, lastRemindedHookVersion
+    }
+    public init(from d: Decoder) throws {   // tolerate old sidecars without the new key
+        let c = try d.container(keyedBy: CodingKeys.self)
+        lastSync = try c.decodeIfPresent(Date.self, forKey: .lastSync)
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        reachable = (try? c.decodeIfPresent(Bool.self, forKey: .reachable)) ?? false
+        hookVersion = try c.decodeIfPresent(String.self, forKey: .hookVersion)
+        lastRemindedHookVersion = try c.decodeIfPresent(String.self, forKey: .lastRemindedHookVersion)
+    }
+
+    /// Nudge the user to reload a host's VSCode window iff a NEW hook version was pushed (once per
+    /// version, not every sync). Pure → unit-tested.
+    public static func shouldRemindReload(hookVersion: String?, lastReminded: String?) -> Bool {
+        guard let hv = hookVersion else { return false }
+        return hv != lastReminded
     }
 }
 

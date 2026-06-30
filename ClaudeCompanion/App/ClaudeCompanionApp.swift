@@ -26,5 +26,14 @@ struct ClaudeCompanionApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+
+        // The deep surface: a single resizable, tabbed window opened from the popover. A plain
+        // `Window` (not `WindowGroup`) so there's only ever one instance. The popover raises it via
+        // openWindow(id:) + NSApp.activate (LSUIElement apps don't come forward on their own).
+        Window("Claude Companion", id: "dashboard") {
+            DashboardView(model: model)
+        }
+        .defaultSize(width: 760, height: 560)
+        .windowResizability(.contentMinSize)
     }
 }
