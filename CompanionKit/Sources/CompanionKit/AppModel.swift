@@ -606,10 +606,18 @@ public final class AppModel {
     private func checkReloadReminders() {
         for r in remotes {
             var st = remoteStateStore.load(alias: r.alias)
+            var remind = false
             if RemoteState.shouldRemindReload(hookVersion: st.hookVersion,
                                               lastReminded: st.lastRemindedHookVersion) {
-                reloadReminderHost = r.alias
                 st.lastRemindedHookVersion = st.hookVersion
+                remind = true
+            }
+            if st.needsReload {            // settings were re-wired this sync
+                st.needsReload = false
+                remind = true
+            }
+            if remind {
+                reloadReminderHost = r.alias
                 remoteStateStore.save(alias: r.alias, st)
             }
         }

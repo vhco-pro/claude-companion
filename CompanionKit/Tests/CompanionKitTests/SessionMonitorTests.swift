@@ -71,6 +71,29 @@ final class SessionMonitorTests: XCTestCase {
         XCTAssertFalse(s.active)
     }
 
+    // A trailing timestamp-less entry (e.g. a `pr-link` line) must NOT bump last_seen to now - that
+    // made dead remote sessions show as active forever (plan 15 fix 2). Carry the last real
+    // timestamp forward instead.
+    func testTimestamplessTrailingLineDoesNotInflateLastSeen() throws {
+        let (db, dir) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: dir) }
+        let projects = dir + "/projects", projA = projects + "/proj-a"
+        try FileManager.default.createDirectory(atPath: projA, withIntermediateDirectories: true)
+        // line 1: real timestamp (2026-06-15T10:00:00Z); line 2: a pr-link with NO timestamp.
+        let realLine = assistantLine + "\n"
+        let prLink = #"{"type":"pr-link","sessionId":"s1"}"# + "\n"
+        try (realLine + prLink).write(toFile: projA + "/sess1.jsonl", atomically: true, encoding: .utf8)
+
+        let ing = SessionIngestor(db: db)
+        JSONLTailer(ingestor: ing, projectsDir: projects, offsetsPath: dir + "/offsets.json").scanOnce()
+
+        // 1h after the REAL timestamp the session must be inactive. Without the fix, the pr-link line
+        // would have stamped last_seen = wall-clock now (in the future) → wrongly "active".
+        let realTs = ISO8601DateFormatter().date(from: "2026-06-15T10:00:00Z")!
+        let s = ing.summaries(now: realTs.addingTimeInterval(3600)).first
+        XCTAssertNotNil(s)
+        XCTAssertFalse(s!.active, "timestamp-less trailing line must not inflate last_seen to now")
+    }
+
     func testTailerIngestsAndResumesFromOffset() throws {
         let (db, dir) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: dir) }
         let projects = dir + "/projects", projA = projects + "/proj-a"
