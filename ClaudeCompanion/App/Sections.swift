@@ -159,24 +159,42 @@ struct BlocklistSection: View {
 
 struct SessionsList: View {
     @Bindable var model: AppModel
+    @State private var expandedGroup: String?
     @State private var expandedSession: String?
 
     var body: some View {
-        let active = model.sessions.filter(\.active)
+        let groups = model.activeSessionGroups
+        let total = groups.reduce(0) { $0 + $1.sessionCount }
         VStack(alignment: .leading, spacing: 6) {
-            Text("Active sessions (\(active.count))").font(.caption).foregroundStyle(.secondary)
-            if active.isEmpty {
+            Text("Active sessions (\(total) in \(groups.count) project\(groups.count == 1 ? "" : "s"))")
+                .font(.caption).foregroundStyle(.secondary)
+            if groups.isEmpty {
                 Text("No active sessions right now").font(.caption).foregroundStyle(.tertiary)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(active) { s in
+                    ForEach(groups) { g in
                         VStack(alignment: .leading, spacing: 4) {
-                            SessionCard(s: s)
+                            ProjectGroupCard(g: g, expanded: expandedGroup == g.id)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    expandedSession = (expandedSession == s.id) ? nil : s.id
+                                    expandedGroup = (expandedGroup == g.id) ? nil : g.id
                                 }
-                            if expandedSession == s.id { sessionDetail(s) }
+                            // Expanded: the individual member sessions, each tappable for its detail.
+                            if expandedGroup == g.id {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(g.sessions) { s in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            SessionCard(s: s)
+                                                .contentShape(Rectangle())
+                                                .onTapGesture {
+                                                    expandedSession = (expandedSession == s.id) ? nil : s.id
+                                                }
+                                            if expandedSession == s.id { sessionDetail(s) }
+                                        }
+                                    }
+                                }
+                                .padding(.leading, 12)
+                            }
                         }
                     }
                 }
@@ -251,6 +269,56 @@ struct SessionCard: View {
             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             if !s.recentTools.isEmpty {
                 Text(s.recentTools.reversed().joined(separator: " › "))
+                    .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            }
+        }
+    }
+}
+
+// One card per project, aggregating its active sessions (session-grouping.spec.md). A `N sessions`
+// badge appears only when there's more than one; tapping the card reveals the member sessions.
+struct ProjectGroupCard: View {
+    let g: ProjectSessionGroup
+    var expanded = false
+
+    private var modelLabel: String {
+        g.models.prefix(2).map { $0.replacingOccurrences(of: "claude-", with: "") }
+            .joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9)).foregroundStyle(.tertiary)
+                Circle().fill(Color.green).frame(width: 7, height: 7)
+                Text(g.projectName).bold().lineLimit(1)
+                if g.sessionCount > 1 {
+                    Text("\(g.sessionCount) sessions")
+                        .font(.system(size: 9, weight: .medium))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.2), in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+                if g.host != "local" {
+                    Text(g.host)
+                        .font(.system(size: 9, weight: .medium))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.accentColor.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.tint).lineLimit(1)
+                }
+                Spacer()
+                Text(modelLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            HStack(spacing: 8) {
+                Text("\(g.toolCount) tools")
+                Text("↓\(AppModel.fmtTokens(g.inputTokens))")
+                Text("↑\(AppModel.fmtTokens(g.outputTokens))")
+                if let c = g.costUSD { Text(Format.cost(c)) }
+            }
+            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            if !g.recentTools.isEmpty {
+                Text(g.recentTools.reversed().joined(separator: " › "))
                     .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
             }
         }

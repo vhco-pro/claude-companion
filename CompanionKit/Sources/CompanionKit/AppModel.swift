@@ -26,6 +26,13 @@ public final class AppModel {
     public private(set) var blocklistEntries: [BlocklistEntry] = []
     public private(set) var sessions: [SessionSummary] = []
 
+    /// Active sessions collapsed by project (session-grouping.spec.md). "Active" here is the
+    /// recency window AND an activity floor (≥1 tool call) - so empty/no-model sessions don't leak
+    /// in. Drives the Sessions tab + the popover's top-3 glance.
+    public var activeSessionGroups: [ProjectSessionGroup] {
+        SessionGrouping.groupByProject(sessions.filter { $0.active && $0.toolCount > 0 })
+    }
+
     public struct BlocklistEntry: Identifiable, Sendable {
         public let host: String
         public let malicious: Bool          // false = compromised

@@ -19,6 +19,8 @@ struct PanelView: View {
             ControlsSection(model: model)
             rollup
             Divider()
+            activeGlance
+            recentGlance
             Button {
                 openWindow(id: "dashboard")
                 NSApplication.shared.activate(ignoringOtherApps: true)
@@ -63,6 +65,40 @@ struct PanelView: View {
             }
         }
         .font(.caption)
+    }
+
+    // Top 3 busiest projects — a glance so you don't have to open the dashboard for the common case.
+    @ViewBuilder private var activeGlance: some View {
+        let groups = model.activeSessionGroups
+        if !groups.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Active").font(.caption2).foregroundStyle(.tertiary)
+                ForEach(groups.prefix(3)) { g in
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                        Text(g.projectName).font(.caption).lineLimit(1)
+                        if g.sessionCount > 1 {
+                            Text("\(g.sessionCount)×").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let c = g.costUSD { Text(Format.cost(c)).font(.caption2).foregroundStyle(.secondary).monospacedDigit() }
+                    }
+                }
+            }
+            Divider()
+        }
+    }
+
+    // Last 3 decisions that needed a human — quick triage without the dashboard.
+    @ViewBuilder private var recentGlance: some View {
+        let recent = model.recentDecisions.prefix(3)
+        if !recent.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Recent").font(.caption2).foregroundStyle(.tertiary)
+                ForEach(Array(recent), id: \.id) { d in DecisionRow(d: d) }
+            }
+            Divider()
+        }
     }
 
     private var footer: some View {

@@ -19,6 +19,17 @@ public struct SessionSummary: Identifiable, Sendable, Equatable {
     public let recentTools: [String]   // newest-first
     public let repoURL: URL?           // web URL of the cwd's git repo, if any (resolved + cached)
     public let host: String            // "local" or the SSH alias the session runs on
+
+    public init(id: String, projectName: String, model: String?, toolCount: Int,
+                inputTokens: Int, outputTokens: Int, cacheTokens: Int, costUSD: Double?,
+                projectPath: String?, startedAt: Date?, lastSeen: Date?, active: Bool,
+                recentTools: [String], repoURL: URL?, host: String) {
+        self.id = id; self.projectName = projectName; self.model = model
+        self.toolCount = toolCount; self.inputTokens = inputTokens; self.outputTokens = outputTokens
+        self.cacheTokens = cacheTokens; self.costUSD = costUSD; self.projectPath = projectPath
+        self.startedAt = startedAt; self.lastSeen = lastSeen; self.active = active
+        self.recentTools = recentTools; self.repoURL = repoURL; self.host = host
+    }
 }
 
 /// Turns parsed JSONL events into rows in the app DB and answers session summaries.
