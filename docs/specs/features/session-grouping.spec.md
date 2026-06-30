@@ -29,16 +29,22 @@ tighten what counts as active.
   distinct `models`, `recentTools` from the newest member, `host`, and the group's latest `lastSeen`.
 - Groups are ordered by latest `lastSeen` (most-recently-active project first).
 
-### 1a. Title by the *working subfolder*, not the launch cwd
+### 1a. Title by the *working subfolder*, not the launch cwd (conservative)
 - Claude Code records only the **launch directory** as a session's cwd, so many sessions started at
   a monorepo root all read as the root (`one-b2c`) even though each works in a different subfolder.
-- Derive the real working folder from the files the session **actually edits/reads**
-  (`tool_events.target_path`): the **deepest common ancestor directory** of the in-project file
-  paths. `SessionGrouping.workingDirectory(projectPath:targetPaths:)` (pure, tested) returns it, or
-  nil when there's no signal deeper than the root (then fall back to the cwd leaf).
-- `SessionSummary.workingPath` carries it; the card **title** = leaf of `workingPath ?? projectPath`,
-  and grouping is **keyed by `workingPath`** - so a monorepo-root launch splits into the subfolders
-  each session works on (e.g. `vega`, `satellites/foo`). The cwd is still kept for the detail row.
+- Derive the real working folder from the files the session **EDITS** (`tool_events.target_path`,
+  Edit/Write/MultiEdit/NotebookEdit only - reads are incidental, e.g. opening docs in other repos).
+  `SessionGrouping.workingDirectory(projectPath:editPaths:)` (pure, tested) is deliberately cautious:
+  - if **any real edit** (excluding scratch/config: `/tmp`, `~/Library`, `~/.claude`, `~/.config`, …
+    via `isTransient`) lands **outside** the launch dir, the session is **broad** → keep the cwd
+    (don't relabel it to one subfolder it happens to touch - this was the bug that mislabeled a
+    `~/code/personal` session as `vitepress` and merged it with the real vitepress session);
+  - otherwise return the **deepest common ancestor** of the in-cwd edits, only when deeper than cwd;
+  - nil in every uncertain case → caller uses the cwd.
+- `SessionSummary.workingPath` carries it; grouping is **keyed by `workingPath ?? projectPath`**.
+- **Display:** cards show a **`parent / leaf` breadcrumb** (e.g. `personal / vitepress`,
+  `platform / vega`, `public-projects / claude-companion`) so repeated leaf names are disambiguated
+  by their parent. The full cwd is still kept for the detail row.
 
 ### 2. Tighter active filter (chosen: *recent + has activity*)
 - The grouping input is `sessions.filter { $0.active && $0.toolCount > 0 }` - a session must be both
