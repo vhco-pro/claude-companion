@@ -160,7 +160,9 @@ public final class SessionIngestor {
                     lastSeen: lastSeen,
                     active: active,
                     recentTools: recent,
-                    repoURL: repoURL(projectPath),
+                    // Resolve the repo from the working subfolder, not the launch cwd: a session
+                    // started at a monorepo root (not itself a repo) still links to the repo it works in.
+                    repoURL: repoURL(workingPath ?? projectPath),
                     host: (row["host"] as String?) ?? "local",
                     workingPath: workingPath
                 )

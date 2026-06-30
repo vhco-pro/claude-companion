@@ -244,7 +244,9 @@ public final class AppModel {
     /// Resolve repo URLs for any not-yet-seen project paths off the main thread, then rebuild the
     /// summaries from the now-populated cache (a pure lookup) so the links appear.
     private func resolveRepoURLs() {
-        let pending = Set(sessions.compactMap(\.projectPath)).filter { !repoURLCache.keys.contains($0) }
+        // Resolve from the working subfolder where known (the launch cwd may not be a repo).
+        let pending = Set(sessions.compactMap { $0.workingPath ?? $0.projectPath })
+            .filter { !repoURLCache.keys.contains($0) }
         guard !pending.isEmpty else { return }
         Task.detached(priority: .utility) { [weak self] in
             var resolved: [String: URL?] = [:]
