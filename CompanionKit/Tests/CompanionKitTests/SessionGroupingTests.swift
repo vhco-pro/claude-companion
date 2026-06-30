@@ -63,24 +63,42 @@ struct SessionGroupingTests {
 
     @Test func workingDirectoryFromEditedFiles() {
         let root = "/Users/m/code/one-b2c"
-        let targets = [
-            "/tmp/scratch/notes.md",                                   // outside project → ignored
+        let edits = [
+            "/tmp/scratch/notes.md",                                   // scratch → ignored, not "broad"
             root + "/platform/vega/README.md",
             root + "/platform/vega/research/x.md",
             root + "/platform/vega/CLAUDE.md",
         ]
-        #expect(SessionGrouping.workingDirectory(projectPath: root, targetPaths: targets)
+        #expect(SessionGrouping.workingDirectory(projectPath: root, editPaths: edits)
                 == root + "/platform/vega")
+    }
+
+    @Test func broadSessionEditingAnotherRepoKeepsCwd() {
+        // The real bug: launched at ~/code/personal, but edits land in another repo too. Don't
+        // mislabel the whole session as the one subfolder under cwd it happens to touch.
+        let cwd = "/Users/m/code/personal"
+        let edits = [
+            cwd + "/vitepress/post.md",
+            "/Users/m/code/one-b2c/platform/auto-diagrams/x.md",      // real edit outside cwd
+        ]
+        #expect(SessionGrouping.workingDirectory(projectPath: cwd, editPaths: edits) == nil)
+    }
+
+    @Test func scratchEditsOutsideCwdDoNotMarkBroad() {
+        let cwd = "/Users/m/code/one-b2c"
+        let edits = [cwd + "/platform/vega/a.md", "/tmp/run.sh"]      // /tmp is scratch, ignored
+        #expect(SessionGrouping.workingDirectory(projectPath: cwd, editPaths: edits)
+                == cwd + "/platform/vega")
     }
 
     @Test func workingDirectoryNilWhenOnlyRootOrOutside() {
         let root = "/Users/m/code/one-b2c"
-        // files at the root itself → no deeper subfolder
+        // edits at the root itself → no deeper subfolder
         #expect(SessionGrouping.workingDirectory(projectPath: root,
-                targetPaths: [root + "/README.md", root + "/CLAUDE.md"]) == nil)
-        // nothing inside the project → nil (fall back to cwd)
+                editPaths: [root + "/README.md", root + "/CLAUDE.md"]) == nil)
+        // nothing inside the project (all scratch) → nil (fall back to cwd)
         #expect(SessionGrouping.workingDirectory(projectPath: root,
-                targetPaths: ["/tmp/a.md", "/etc/hosts"]) == nil)
+                editPaths: ["/tmp/a.md"]) == nil)
     }
 
     @Test func groupingSplitsMonorepoRootByWorkingSubfolder() {

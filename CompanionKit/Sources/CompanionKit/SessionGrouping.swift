@@ -21,21 +21,35 @@ public struct ProjectSessionGroup: Identifiable, Sendable, Equatable {
 }
 
 public enum SessionGrouping {
-    /// The folder a session is *actually working in*, derived from the files it edits/reads -
-    /// Claude Code only records the launch cwd, so a session launched at a monorepo root but editing
-    /// `repo/platform/vega/**` should read as "vega", not the repo root. Returns the deepest common
-    /// ancestor directory of the in-project file paths, or nil if there's no signal deeper than the
-    /// project root (caller falls back to the cwd). Pure - safe to unit test.
-    public static func workingDirectory(projectPath: String?, targetPaths: [String]) -> String? {
+    /// The folder a session is *actually working in*, derived **only from the files it EDITS**
+    /// (Claude Code records just the launch cwd, so a session started at a monorepo root but editing
+    /// `repo/platform/vega/**` should read as "vega"). Deliberately conservative:
+    ///  - edits only (reads are often incidental - opening docs across other repos);
+    ///  - if **any** edit lands outside the launch dir, the session is "broad" → keep the cwd (don't
+    ///    relabel it to one of the subfolders it happens to touch);
+    ///  - otherwise return the deepest common ancestor of the edits, but only when it's strictly
+    ///    deeper than the launch dir.
+    /// Returns nil (→ caller uses the cwd) in every uncertain case. Pure - unit-tested.
+    public static func workingDirectory(projectPath: String?, editPaths: [String]) -> String? {
         guard let root = projectPath, !root.isEmpty else { return nil }
         let prefix = root.hasSuffix("/") ? root : root + "/"
-        let dirs = targetPaths.compactMap { p -> String? in
-            guard p.hasPrefix(prefix) else { return nil }       // only files inside the project
-            return (p as NSString).deletingLastPathComponent
-        }
-        guard !dirs.isEmpty else { return nil }
-        let common = commonPathPrefix(dirs)
+        let dirs = editPaths.map { ($0 as NSString).deletingLastPathComponent }
+        let underCwd = dirs.filter { $0 == root || $0.hasPrefix(prefix) }
+        // A *real* edit outside the launch dir (not a scratch/config path) means this is a broad
+        // session - keep the cwd rather than narrowing it to one subfolder it happens to touch.
+        let realOutside = dirs.contains { $0 != root && !$0.hasPrefix(prefix) && !isTransient($0) }
+        if realOutside { return nil }
+        guard !underCwd.isEmpty else { return nil }
+        let common = commonPathPrefix(underCwd)
         return common.count > root.count ? common : nil          // only when deeper than the root
+    }
+
+    /// Scratch / config / system locations that don't count as "working in another project".
+    static func isTransient(_ dir: String) -> Bool {
+        let home = NSHomeDirectory()
+        let transient = ["/tmp", "/private/tmp", "/private/var", "/var", "/etc", "/usr",
+                         home + "/Library", home + "/.claude", home + "/.config", home + "/.cache"]
+        return transient.contains { dir == $0 || dir.hasPrefix($0 + "/") }
     }
 
     /// Longest shared leading path-component prefix across the given absolute paths.

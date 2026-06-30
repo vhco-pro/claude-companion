@@ -137,14 +137,15 @@ public final class SessionIngestor {
 
                 let projectPath: String? = row["project_path"]
                 let active = lastSeen.map { now.timeIntervalSince($0) < activeWindow } ?? false
-                // Derive the actual working subfolder from the files this session touched (the cwd
-                // is only the launch dir). Title + grouping prefer it over the bare cwd leaf.
-                let targets = try String.fetchAll(db, sql: """
+                // Derive the actual working subfolder from the files this session EDITS (the cwd is
+                // only the launch dir). Edits only - reads across other repos are incidental.
+                let edits = try String.fetchAll(db, sql: """
                     SELECT target_path FROM tool_events
                     WHERE session_id = ? AND target_path IS NOT NULL AND target_path != ''
+                      AND tool IN ('Edit','Write','MultiEdit','NotebookEdit')
                     ORDER BY id DESC LIMIT 300
                     """, arguments: [id])
-                let workingPath = SessionGrouping.workingDirectory(projectPath: projectPath, targetPaths: targets)
+                let workingPath = SessionGrouping.workingDirectory(projectPath: projectPath, editPaths: edits)
                 return SessionSummary(
                     id: id,
                     projectName: Self.friendlyProject(workingPath ?? projectPath),

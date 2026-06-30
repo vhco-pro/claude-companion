@@ -25,6 +25,15 @@ enum PanelFormat {
         let parts = url.path.split(separator: "/").map(String.init).filter { $0 != "_git" }
         return parts.suffix(2).joined(separator: "/")
     }
+
+    /// "parent / leaf" breadcrumb for a project path, so repeated leaf names (vitepress, vega) are
+    /// disambiguated by their parent folder. Returns just the leaf when there's no parent.
+    static func projectLabel(path: String?, fallback: String) -> (parent: String?, leaf: String) {
+        guard let path, !path.isEmpty else { return (nil, fallback) }
+        let comps = path.split(separator: "/").map(String.init)
+        guard let leaf = comps.last else { return (nil, fallback) }
+        return (comps.count >= 2 ? comps[comps.count - 2] : nil, leaf)
+    }
 }
 
 enum Format {
@@ -295,7 +304,14 @@ struct ProjectGroupCard: View {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9)).foregroundStyle(.tertiary)
                 Circle().fill(Color.green).frame(width: 7, height: 7)
-                Text(g.projectName).bold().lineLimit(1)
+                let label = PanelFormat.projectLabel(path: g.id, fallback: g.projectName)
+                HStack(spacing: 0) {
+                    if let parent = label.parent {
+                        Text(parent + " / ").foregroundStyle(.secondary)
+                    }
+                    Text(label.leaf).bold()
+                }
+                .lineLimit(1)
                 if g.sessionCount > 1 {
                     Text("\(g.sessionCount) sessions")
                         .font(.system(size: 9, weight: .medium))
