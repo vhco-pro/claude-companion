@@ -186,7 +186,7 @@ struct SessionsList: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(groups) { g in
                         VStack(alignment: .leading, spacing: 4) {
-                            ProjectGroupCard(g: g, expanded: expandedGroup == g.id)
+                            ProjectGroupCard(model: model, g: g, expanded: expandedGroup == g.id)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     expandedGroup = (expandedGroup == g.id) ? nil : g.id
@@ -220,29 +220,10 @@ struct SessionsList: View {
         }
     }
 
+    // Detail = the per-session stuff the card doesn't already show. The cwd path + repo link live on
+    // the group card (clickable without expanding), so they're intentionally NOT repeated here.
     private func sessionDetail(_ s: SessionSummary) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            if let p = s.projectPath {
-                Button { model.revealInFinder(p) } label: {
-                    Label(p, systemImage: "folder")
-                        .lineLimit(1).truncationMode(.middle)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tertiary)
-                .help("Reveal \(p) in Finder")
-            }
-            if let url = s.repoURL {
-                Link(destination: url) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.branch")
-                        Text(PanelFormat.repoLabel(url)).underline()
-                        Image(systemName: "arrow.up.right").font(.system(size: 8))
-                    }
-                    .lineLimit(1)
-                }
-                .foregroundStyle(.link)
-                .help("Open \(url.absoluteString)")
-            }
             HStack(spacing: 10) {
                 if let started = s.startedAt { Text("started \(AppModel.relative(started))") }
                 Text("⊡cache \(AppModel.fmtTokens(s.cacheTokens))")
@@ -296,6 +277,7 @@ struct SessionCard: View {
 // One card per project, aggregating its active sessions (session-grouping.spec.md). A `N sessions`
 // badge appears only when there's more than one; tapping the card reveals the member sessions.
 struct ProjectGroupCard: View {
+    @Bindable var model: AppModel
     let g: ProjectSessionGroup
     var expanded = false
 
@@ -342,7 +324,8 @@ struct ProjectGroupCard: View {
                 if let c = g.costUSD { Text(Format.cost(c)) }
             }
             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            // Clickable git repo link right on the card - no need to expand to reach it.
+            // Clickable git repo link + Finder path right on the card - the whole point is to reach
+            // them without expanding, so they live here (not in the expanded detail).
             if let url = g.repoURL {
                 Link(destination: url) {
                     HStack(spacing: 4) {
@@ -355,6 +338,14 @@ struct ProjectGroupCard: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.link)
                 .help("Open \(url.absoluteString)")
+            }
+            if let p = g.projectPath {
+                Button { model.revealInFinder(p) } label: {
+                    Label(p, systemImage: "folder").font(.caption2)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                .buttonStyle(.plain).foregroundStyle(.tertiary)
+                .help("Reveal \(p) in Finder")
             }
             if !g.recentTools.isEmpty {
                 Text(g.recentTools.reversed().joined(separator: " › "))

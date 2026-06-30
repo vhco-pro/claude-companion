@@ -17,6 +17,7 @@ public struct ProjectSessionGroup: Identifiable, Sendable, Equatable {
     public let host: String            // from the newest member ("local" or an SSH alias)
     public let lastSeen: Date?         // latest activity in the group
     public let repoURL: URL?           // git repo web URL of the project, if any (newest member)
+    public let projectPath: String?    // launch cwd of the newest member (for the Finder-reveal link)
 
     public var sessionCount: Int { sessions.count }
 }
@@ -103,7 +104,8 @@ public enum SessionGrouping {
                 recentTools: newest.recentTools,
                 host: newest.host,
                 lastSeen: newest.lastSeen,
-                repoURL: sorted.compactMap(\.repoURL).first
+                repoURL: sorted.compactMap(\.repoURL).first,
+                projectPath: newest.projectPath
             )
         }
 
