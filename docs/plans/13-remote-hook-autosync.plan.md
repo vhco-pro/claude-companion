@@ -72,5 +72,11 @@ for register + sync; one push per version bump; pull survives a push failure; re
 | P4 live | Fedora: stale marker → one push + bump + reminder; rerun → no transfer; gate OK | manual |
 
 ## Status
-**Planned** - not started. Backend-only; implement after (or alongside) the UI phases on
-`feat/dashboard-redesign`. Can land independently of the visual sign-off.
+**Implemented (P1-P3) on `feat/dashboard-redesign`** — `ensureHookCurrent` extracted + shared by
+register and the now-async `syncOnce` (best-effort: a push failure records `lastError` but the pull
+still runs); `RemoteState.lastRemindedHookVersion` + `AppModel.checkReloadReminders` nudge once per
+pushed version; an `SSHClient` protocol seam makes it unit-testable. **4 tests** (gate push/skip,
+reminder-once, pull-survives-hook-failure) + full suite green (111 XCTest + 10 grouping).
+**P4 (live Fedora verify): ✅ done 2026-06-30** — set the remote `.hook-version` stale (`0.0.1`),
+replayed the gate's push (upload + chmod + marker) → marker bumped to `0.5.7`, hook in place
+(57 MB), gate still denies `rm -rf /`; a second pass matches → no transfer.

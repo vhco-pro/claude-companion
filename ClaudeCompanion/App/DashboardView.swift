@@ -61,9 +61,14 @@ struct DashboardView: View {
         scroll {
             statStrip
             Divider()
+            Text("Usage").font(.headline)
             UsageSection(model: model)
             Divider()
+            Text("Gate").font(.headline)
             ControlsSection(model: model)
+            Text(model.hookInstalled ? "Hook installed — tool calls are gated."
+                 : "Hook not installed — install it from Settings.")
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 

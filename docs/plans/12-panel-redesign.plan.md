@@ -100,5 +100,8 @@ lists; frame persists; no gate/data/action regressions.
 | Regression | install/remove hook, allow/block decision, add/remove remote all still work | manual |
 
 ## Status
-**Planned** - not started. Implement on `feat/dashboard-redesign`; build + run locally each phase
-for visual review; do **not** merge until the user signs off on the UI.
+**Implemented (P1-P6) on `feat/dashboard-redesign`** — extracted section views; hybrid compact
+popover + single resizable tabbed `Window` (Overview/Sessions/Decisions/Remotes/Settings) raised
+from the `LSUIElement` app; popover top-3 sessions/decisions are interactive (expand + allow/block);
+Decisions search + type filter; cost uncapped; Overview section headers (P6). Built + run locally
+across several review rounds. **Awaiting final UI sign-off before merge** (per the branch rule).
