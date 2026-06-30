@@ -29,6 +29,17 @@ tighten what counts as active.
   distinct `models`, `recentTools` from the newest member, `host`, and the group's latest `lastSeen`.
 - Groups are ordered by latest `lastSeen` (most-recently-active project first).
 
+### 1a. Title by the *working subfolder*, not the launch cwd
+- Claude Code records only the **launch directory** as a session's cwd, so many sessions started at
+  a monorepo root all read as the root (`one-b2c`) even though each works in a different subfolder.
+- Derive the real working folder from the files the session **actually edits/reads**
+  (`tool_events.target_path`): the **deepest common ancestor directory** of the in-project file
+  paths. `SessionGrouping.workingDirectory(projectPath:targetPaths:)` (pure, tested) returns it, or
+  nil when there's no signal deeper than the root (then fall back to the cwd leaf).
+- `SessionSummary.workingPath` carries it; the card **title** = leaf of `workingPath ?? projectPath`,
+  and grouping is **keyed by `workingPath`** - so a monorepo-root launch splits into the subfolders
+  each session works on (e.g. `vega`, `satellites/foo`). The cwd is still kept for the detail row.
+
 ### 2. Tighter active filter (chosen: *recent + has activity*)
 - The grouping input is `sessions.filter { $0.active && $0.toolCount > 0 }` - a session must be both
   recent (existing `active` window) **and** have ≥1 tool call. This drops the empty `?` cards.

@@ -6,11 +6,12 @@ struct SessionGroupingTests {
     private func session(_ id: String, path: String?, name: String, model: String?,
                          tools: Int, inTok: Int = 0, outTok: Int = 0, cache: Int = 0,
                          cost: Double? = nil, seen: Date?, active: Bool = true,
-                         recent: [String] = [], host: String = "local") -> SessionSummary {
+                         recent: [String] = [], host: String = "local",
+                         working: String? = nil) -> SessionSummary {
         SessionSummary(id: id, projectName: name, model: model, toolCount: tools,
                        inputTokens: inTok, outputTokens: outTok, cacheTokens: cache, costUSD: cost,
                        projectPath: path, startedAt: nil, lastSeen: seen, active: active,
-                       recentTools: recent, repoURL: nil, host: host)
+                       recentTools: recent, repoURL: nil, host: host, workingPath: working)
     }
 
     @Test func aggregatesMembersOfSameProject() {
@@ -58,6 +59,43 @@ struct SessionGroupingTests {
         let now = Date(timeIntervalSince1970: 4_000)
         let s = [session("a", path: "/code/x", name: "x", model: nil, tools: 2, cost: nil, seen: now)]
         #expect(SessionGrouping.groupByProject(s).first?.costUSD == nil)
+    }
+
+    @Test func workingDirectoryFromEditedFiles() {
+        let root = "/Users/m/code/one-b2c"
+        let targets = [
+            "/tmp/scratch/notes.md",                                   // outside project → ignored
+            root + "/platform/vega/README.md",
+            root + "/platform/vega/research/x.md",
+            root + "/platform/vega/CLAUDE.md",
+        ]
+        #expect(SessionGrouping.workingDirectory(projectPath: root, targetPaths: targets)
+                == root + "/platform/vega")
+    }
+
+    @Test func workingDirectoryNilWhenOnlyRootOrOutside() {
+        let root = "/Users/m/code/one-b2c"
+        // files at the root itself → no deeper subfolder
+        #expect(SessionGrouping.workingDirectory(projectPath: root,
+                targetPaths: [root + "/README.md", root + "/CLAUDE.md"]) == nil)
+        // nothing inside the project → nil (fall back to cwd)
+        #expect(SessionGrouping.workingDirectory(projectPath: root,
+                targetPaths: ["/tmp/a.md", "/etc/hosts"]) == nil)
+    }
+
+    @Test func groupingSplitsMonorepoRootByWorkingSubfolder() {
+        let now = Date(timeIntervalSince1970: 6_000)
+        let root = "/code/one-b2c"
+        let s = [
+            session("a", path: root, name: "vega", model: "opus", tools: 5, seen: now,
+                    working: root + "/platform/vega"),
+            session("b", path: root, name: "foo", model: "opus", tools: 5, seen: now,
+                    working: root + "/satellites/foo"),
+        ]
+        let groups = SessionGrouping.groupByProject(s)
+        #expect(groups.count == 2)
+        #expect(Set(groups.map(\.projectName)) == ["vega", "foo"])   // split by working subfolder
+        #expect(Set(groups.map(\.id)) == [root + "/platform/vega", root + "/satellites/foo"])
     }
 
     @Test func singleSessionGroupIntact() {

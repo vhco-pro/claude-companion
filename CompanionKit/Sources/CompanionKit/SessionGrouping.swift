@@ -21,15 +21,44 @@ public struct ProjectSessionGroup: Identifiable, Sendable, Equatable {
 }
 
 public enum SessionGrouping {
-    /// Collapse sessions sharing a project into one group. Keyed by `projectPath` (so two different
-    /// folders with the same leaf name stay separate); falls back to `projectName` when no path.
-    /// Members and groups are ordered newest-active first. Pure - safe to unit test.
+    /// The folder a session is *actually working in*, derived from the files it edits/reads -
+    /// Claude Code only records the launch cwd, so a session launched at a monorepo root but editing
+    /// `repo/platform/vega/**` should read as "vega", not the repo root. Returns the deepest common
+    /// ancestor directory of the in-project file paths, or nil if there's no signal deeper than the
+    /// project root (caller falls back to the cwd). Pure - safe to unit test.
+    public static func workingDirectory(projectPath: String?, targetPaths: [String]) -> String? {
+        guard let root = projectPath, !root.isEmpty else { return nil }
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        let dirs = targetPaths.compactMap { p -> String? in
+            guard p.hasPrefix(prefix) else { return nil }       // only files inside the project
+            return (p as NSString).deletingLastPathComponent
+        }
+        guard !dirs.isEmpty else { return nil }
+        let common = commonPathPrefix(dirs)
+        return common.count > root.count ? common : nil          // only when deeper than the root
+    }
+
+    /// Longest shared leading path-component prefix across the given absolute paths.
+    static func commonPathPrefix(_ paths: [String]) -> String {
+        let split = paths.map { $0.split(separator: "/", omittingEmptySubsequences: false).map(String.init) }
+        guard var common = split.first else { return "" }
+        for comps in split.dropFirst() {
+            var n = 0
+            while n < common.count, n < comps.count, common[n] == comps[n] { n += 1 }
+            common = Array(common.prefix(n))
+        }
+        return common.joined(separator: "/")
+    }
+
+    /// Collapse sessions sharing a working folder into one group. Keyed by `workingPath` (the
+    /// derived subfolder) then `projectPath`, so two different folders never merge and a monorepo
+    /// root splits by what each session actually works on. Members/groups ordered newest-first.
     public static func groupByProject(_ sessions: [SessionSummary]) -> [ProjectSessionGroup] {
         // Preserve first-seen key order, then sort the result; gives a deterministic grouping.
         var order: [String] = []
         var buckets: [String: [SessionSummary]] = [:]
         for s in sessions {
-            let key = s.projectPath ?? s.projectName
+            let key = s.workingPath ?? s.projectPath ?? s.projectName
             if buckets[key] == nil { order.append(key) }
             buckets[key, default: []].append(s)
         }

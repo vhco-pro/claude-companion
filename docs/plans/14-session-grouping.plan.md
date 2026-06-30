@@ -26,6 +26,15 @@ CompanionKit; UI composes it in both surfaces. No DB/ingest/id changes.
 - *Tests:* aggregation sums; distinct models; path-keyed separation (same leaf name, different path →
   two groups); newest-first ordering; 0-tool/no-model excluded; single-session group intact.
 
+### P1a - Working-subfolder title (derive from edited files)
+- `SessionGrouping.workingDirectory(projectPath:targetPaths:)` → deepest common ancestor of
+  in-project `tool_events.target_path`s (nil if not deeper than root). `commonPathPrefix` helper.
+- `SessionSummary.workingPath`; `summaries()` fetches the session's recent target_paths, computes
+  it, sets `projectName = friendlyProject(workingPath ?? projectPath)`. Grouping keys on
+  `workingPath ?? projectPath`.
+- *Tests:* derives `…/platform/vega` from vega edits; nil for root-only / outside-only files;
+  grouping splits a monorepo root by working subfolder. **✅ Done** — 3 tests (8 in suite).
+
 ### P2 - Sessions tab uses group cards
 - New `ProjectGroupCard` (in Sections): name + `N sessions` badge (hidden when 1) + summed
   tools/tokens/cost + model chips + newest tool chain + host chip. Tap → expand to member

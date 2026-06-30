@@ -159,14 +159,17 @@ struct BlocklistSection: View {
 
 struct SessionsList: View {
     @Bindable var model: AppModel
+    /// Popover passes a small cap (e.g. 3); the dashboard leaves it nil (show all groups).
+    var limit: Int? = nil
     @State private var expandedGroup: String?
     @State private var expandedSession: String?
 
     var body: some View {
-        let groups = model.activeSessionGroups
-        let total = groups.reduce(0) { $0 + $1.sessionCount }
+        let all = model.activeSessionGroups
+        let groups = limit.map { Array(all.prefix($0)) } ?? all
+        let total = all.reduce(0) { $0 + $1.sessionCount }
         VStack(alignment: .leading, spacing: 6) {
-            Text("Active sessions (\(total) in \(groups.count) project\(groups.count == 1 ? "" : "s"))")
+            Text("Active sessions (\(total) in \(all.count) project\(all.count == 1 ? "" : "s"))")
                 .font(.caption).foregroundStyle(.secondary)
             if groups.isEmpty {
                 Text("No active sessions right now").font(.caption).foregroundStyle(.tertiary)
@@ -331,6 +334,8 @@ struct DecisionsList: View {
     @Bindable var model: AppModel
     /// When true (dashboard), show the search + type filter and don't cap the list.
     var showFilters = false
+    /// Explicit cap (popover passes 3). nil → all when filtering, else the default 8.
+    var limit: Int? = nil
     @State private var expandedDecision: Int64?
     @State private var query = ""
     @State private var typeFilter = "all"   // all / deny / ask
@@ -340,6 +345,7 @@ struct DecisionsList: View {
         if typeFilter != "all" { rows = rows.filter { $0.decision == typeFilter } }
         let q = query.lowercased()
         if !q.isEmpty { rows = rows.filter { ($0.command ?? "").lowercased().contains(q) } }
+        if let limit { return Array(rows.prefix(limit)) }
         return showFilters ? rows : Array(rows.prefix(8))
     }
 
