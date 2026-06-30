@@ -25,12 +25,15 @@ public struct RemotePaths: Equatable, Sendable {
 /// audit/session PULL loop lives in P4 (AppModel). Live methods are integration-tested against a
 /// real host (the Fedora box, P6); the pure helpers here are unit-tested.
 public struct RemoteManager: Sendable {
-    let ssh: SSHRunner
+    let ssh: any SSHClient
     let hookProvider: LinuxHookProvider
     let localRulesCompiled: String
     let localBlocklist: String
 
-    public init(ssh: SSHRunner = SSHRunner(),
+    /// The hook version this app would install on a remote (used by sync to record what it pushed).
+    public var hookVersion: String { hookProvider.version }
+
+    public init(ssh: any SSHClient = SSHRunner(),
                 hookProvider: LinuxHookProvider = LinuxHookProvider(),
                 localRulesCompiled: String = Paths.rulesCompiled,
                 localBlocklist: String = Paths.blocklist) {
@@ -63,23 +66,32 @@ public struct RemoteManager: Sendable {
     /// snapshots hooks at start) - surfaced by the UI.
     @discardableResult
     public func register(host: String) async throws -> RemotePaths {
-        let arch = try detectArch(host: host)
-        let localHook = try await hookProvider.ensure(arch: arch)
         let rp = try remotePaths(host: host)
         try ssh.run(host: host, command: "mkdir -p \(sh(rp.configDir)) \(sh(rp.claudeDir))")
-
-        // Version-gate the hook push: the binary is ~55 MB, so only re-send on a version change.
-        let installedVersion = (try? ssh.run(host: host, command: "cat \(sh(rp.hookVersionMarker)) 2>/dev/null"))?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if installedVersion != hookProvider.version {
-            try ssh.upload(localPath: localHook, to: host, remotePath: rp.hook)
-            try ssh.run(host: host, command: "chmod 755 \(sh(rp.hook))")
-            try ssh.run(host: host, command: "printf %s \(sh(hookProvider.version)) > \(sh(rp.hookVersionMarker))")
-        }
-
+        _ = try await ensureHookCurrent(host: host, paths: rp)
         try pushRules(host: host, paths: rp)
         try installSettings(host: host, paths: rp)
         return rp
+    }
+
+    /// Bring the remote hook to THIS app's version, version-gated: read the remote `.hook-version`
+    /// marker and, only if it differs, download the arch-matched hook (checksum-verified, ~55 MB),
+    /// upload it, `chmod 755`, and write the new marker. Returns whether it actually pushed (so the
+    /// caller can nudge a window reload). Called by both `register` and the periodic sync, so the
+    /// remote hook self-heals after an app upgrade instead of needing a manual Remove/re-Add.
+    @discardableResult
+    public func ensureHookCurrent(host: String, paths: RemotePaths? = nil) async throws -> Bool {
+        let rp = try paths ?? remotePaths(host: host)
+        let installed = (try? ssh.run(host: host, command: "cat \(sh(rp.hookVersionMarker)) 2>/dev/null"))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard installed != hookProvider.version else { return false }   // already current → no transfer
+        let arch = try detectArch(host: host)
+        let localHook = try await hookProvider.ensure(arch: arch)        // only fetched on a real change
+        try ssh.run(host: host, command: "mkdir -p \(sh(rp.configDir))")
+        try ssh.upload(localPath: localHook, to: host, remotePath: rp.hook)
+        try ssh.run(host: host, command: "chmod 755 \(sh(rp.hook))")
+        try ssh.run(host: host, command: "printf %s \(sh(hookProvider.version)) > \(sh(rp.hookVersionMarker))")
+        return true
     }
 
     /// Push the compiled rules + blocklist to a remote (takes effect on its next tool call, since

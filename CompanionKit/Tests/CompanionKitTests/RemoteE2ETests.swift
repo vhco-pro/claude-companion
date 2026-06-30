@@ -72,7 +72,7 @@ final class RemoteE2ETests: XCTestCase {
         let db = try AppDatabase.open()
         let sync = RemoteSync(db: db, manager: manager, ssh: ssh)
         sync.sessionWindowMinutes = 60
-        _ = sync.syncOnce(Remote(alias: host))   // audit ingest happens before sessions, so denies land regardless
+        _ = await sync.syncOnce(Remote(alias: host))   // audit ingest happens before sessions, so denies land regardless
         let denies = try await db.dbQueue.read { db in
             try AuditRecord.filter(Column("host") == host && Column("decision") == "deny").fetchCount(db)
         }

@@ -536,7 +536,7 @@ public final class AppModel {
             var err: String?
             do {
                 try await sync.register(Remote(alias: alias))
-                sync.syncOnce(Remote(alias: alias))
+                await sync.syncOnce(Remote(alias: alias))
                 try? sync.pushRules(to: Remote(alias: alias))
             } catch { err = RemoteSync.describe(error) }
             await MainActor.run {
@@ -578,10 +578,10 @@ public final class AppModel {
         guard let sync = remoteSync, let r = remotes.first(where: { $0.alias == alias }) else { return }
         remoteBusy.insert(alias)
         Task.detached { [weak self] in
-            sync.syncOnce(r)
+            await sync.syncOnce(r)
             await MainActor.run {
                 self?.remoteBusy.remove(alias); self?.refreshRemoteStates()
-                self?.mergeRemoteRepoURLs(); self?.refreshSessions()
+                self?.mergeRemoteRepoURLs(); self?.refreshSessions(); self?.checkReloadReminders()
             }
         }
     }
@@ -591,8 +591,25 @@ public final class AppModel {
         guard let sync = remoteSync, !remotes.isEmpty else { return }
         let rs = remotes
         Task.detached { [weak self] in
-            for r in rs { sync.syncOnce(r) }
-            await MainActor.run { self?.refreshRemoteStates(); self?.mergeRemoteRepoURLs(); self?.refreshSessions() }
+            for r in rs { await sync.syncOnce(r) }
+            await MainActor.run {
+                self?.refreshRemoteStates(); self?.mergeRemoteRepoURLs()
+                self?.refreshSessions(); self?.checkReloadReminders()
+            }
+        }
+    }
+
+    /// After a sync, if a host got a NEW hook pushed (its `hookVersion` advanced past what we last
+    /// reminded for), nudge the user to reload that VSCode window - once per version, not every cycle.
+    private func checkReloadReminders() {
+        for r in remotes {
+            var st = remoteStateStore.load(alias: r.alias)
+            if RemoteState.shouldRemindReload(hookVersion: st.hookVersion,
+                                              lastReminded: st.lastRemindedHookVersion) {
+                reloadReminderHost = r.alias
+                st.lastRemindedHookVersion = st.hookVersion
+                remoteStateStore.save(alias: r.alias, st)
+            }
         }
     }
 

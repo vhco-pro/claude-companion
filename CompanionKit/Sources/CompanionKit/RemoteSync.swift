@@ -14,7 +14,7 @@ import GRDB
 public final class RemoteSync: @unchecked Sendable {
     private let db: AppDatabase
     private let manager: RemoteManager
-    private let ssh: SSHRunner
+    private let ssh: any SSHClient
     private let sessionIngestor: SessionIngestor
     private let stateStore: RemoteStateStore
     /// Only pull session files touched within this window (active work), not the full history.
@@ -26,7 +26,7 @@ public final class RemoteSync: @unchecked Sendable {
 
     public init(db: AppDatabase,
                 manager: RemoteManager = RemoteManager(),
-                ssh: SSHRunner = SSHRunner(),
+                ssh: any SSHClient = SSHRunner(),
                 stateStore: RemoteStateStore = RemoteStateStore()) {
         self.db = db
         self.manager = manager
@@ -46,14 +46,25 @@ public final class RemoteSync: @unchecked Sendable {
     // MARK: pull
 
     /// Best-effort one-shot sync of a host (records status in its sidecar; never throws). Returns
-    /// true if anything was reached/synced (so the caller can refresh the UI).
+    /// true if anything was reached/synced (so the caller can refresh the UI). Also self-heals the
+    /// remote hook to the current app version (version-gated) BEFORE the pull - best-effort, so a
+    /// failed hook push records the error but never blocks the audit/session pull (visibility must
+    /// not depend on a successful upgrade; the remote keeps gating with its previous hook).
     @discardableResult
-    public func syncOnce(_ remote: Remote) -> Bool {
+    public func syncOnce(_ remote: Remote) async -> Bool {
         guard remote.enabled else { return false }
         var state = stateStore.load(alias: remote.alias)
         do {
             let rp = try manager.remotePaths(host: remote.alias)   // first contact = reachability probe
             state.reachable = true
+
+            // Self-heal the remote hook (version-gated). Isolated so a push failure doesn't abort.
+            var hookError: String?
+            do {
+                if try await manager.ensureHookCurrent(host: remote.alias, paths: rp) {
+                    state.hookVersion = manager.hookVersion        // pushed → record + caller nudges reload
+                }
+            } catch { hookError = "hook update failed: \(Self.describe(error))" }
 
             try mirror(host: remote.alias, remotePath: rp.auditLog, localPath: auditMirror(remote.alias))
             let ai = AuditIngestor(db: db, auditPath: auditMirror(remote.alias), offsetPath: auditOffset(remote.alias))
@@ -62,7 +73,7 @@ public final class RemoteSync: @unchecked Sendable {
             try pullSessions(alias: remote.alias, paths: rp)
             resolveRepoURLs(alias: remote.alias)
 
-            state.lastError = nil
+            state.lastError = hookError   // pull succeeded; surface a hook-only failure if any
             state.lastSync = Date()
             stateStore.save(alias: remote.alias, state)
             return true
