@@ -415,6 +415,11 @@ struct DecisionsList: View {
     @ViewBuilder
     private func decisionActions(_ d: AuditRecord) -> some View {
         VStack(alignment: .leading, spacing: 4) {
+            // When the decision was surfaced - only in the expanded detail, not on every row.
+            if let when = AppModel.absolute(iso: d.ts) {
+                let ago = AppModel.relative(iso: d.ts).map { " · \($0)" } ?? ""
+                Text("surfaced \(when)\(ago)").font(.caption2).foregroundStyle(.tertiary)
+            }
             if let cmd = d.command, !cmd.isEmpty {
                 ScrollView {
                     Text(cmd).font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)

@@ -78,12 +78,35 @@ public final class AppModel {
         return s
     }
 
-    public static func relative(_ date: Date) -> String {
+    public nonisolated static func relative(_ date: Date) -> String {
         let secs = Int(Date().timeIntervalSince(date))
         if secs < 60 { return "just now" }
         if secs < 3600 { return "\(secs / 60)m ago" }
         if secs < 86400 { return "\(secs / 3600)h ago" }
         return "\(secs / 86400)d ago"
+    }
+
+    /// Relative label ("2h ago") for an ISO8601 audit timestamp (e.g. `AuditRecord.ts` - when the
+    /// decision was surfaced). nil when the string is absent or unparseable, so the UI can skip it.
+    public nonisolated static func relative(iso: String?) -> String? {
+        guard let iso, let date = parseISO(iso) else { return nil }
+        return relative(date)
+    }
+
+    /// Compact absolute local label ("Jul 9, 01:33") for an ISO8601 audit timestamp - shown in the
+    /// expanded decision detail where a precise instant is wanted. nil when absent/unparseable.
+    public nonisolated static func absolute(iso: String?) -> String? {
+        guard let iso, let date = parseISO(iso) else { return nil }
+        let f = DateFormatter(); f.dateFormat = "MMM d, HH:mm"
+        return f.string(from: date)
+    }
+
+    /// Parse an ISO8601 instant tolerating both the plain `…Z` form the hook writes and the
+    /// fractional-seconds form (same two-formatter fallback as `PanelFormat.resetLabel`).
+    private nonisolated static func parseISO(_ iso: String) -> Date? {
+        let withFrac = ISO8601DateFormatter(); withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        return withFrac.date(from: iso) ?? plain.date(from: iso)
     }
 
     private var db: AppDatabase?
