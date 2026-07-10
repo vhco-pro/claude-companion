@@ -14,6 +14,7 @@ public final class JSONLTailer: @unchecked Sendable {
     private let offsetsPath: String
     private let host: String
     private var offsets: [String: UInt64] = [:]
+    private var didLoadOffsets = false
     private var watcher: FileWatcher?
     private let queue = DispatchQueue(label: "pro.vhco.companion.jsonl")
     private let onUpdate: @MainActor @Sendable () -> Void
@@ -31,7 +32,7 @@ public final class JSONLTailer: @unchecked Sendable {
     }
 
     public func start() {
-        loadOffsets()
+        ensureOffsetsLoaded()
         queue.async { [weak self] in self?.scanAndNotify() }
         watcher = FileWatcher(paths: [projectsDir]) { [weak self] in
             self?.queue.async { self?.scanAndNotify() }
@@ -44,10 +45,22 @@ public final class JSONLTailer: @unchecked Sendable {
         Task { @MainActor in self.onUpdate() }
     }
 
-    /// Synchronous scan of all session files (used directly by tests).
+    /// Synchronous scan of all session files (used directly by tests and by RemoteSync, which
+    /// builds a FRESH tailer per sync). Loads persisted offsets on first use so a direct scanOnce()
+    /// - not just start() - is incremental: without this, a per-sync tailer starts from offset 0
+    /// every time and re-ingests the whole mirror on every pull (unbounded DB growth + CPU burn).
     public func scanOnce() {
+        ensureOffsetsLoaded()
         for file in jsonlFiles() { tail(file) }
         saveOffsets()
+    }
+
+    /// Load persisted offsets exactly once per instance, whichever entry point (start / scanOnce)
+    /// runs first. Idempotent so start()'s own scan doesn't clobber in-memory advances with disk.
+    private func ensureOffsetsLoaded() {
+        guard !didLoadOffsets else { return }
+        loadOffsets()
+        didLoadOffsets = true
     }
 
     private func jsonlFiles() -> [String] {

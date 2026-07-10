@@ -115,4 +115,27 @@ final class SessionMonitorTests: XCTestCase {
         XCTAssertEqual(ing.summaries().first?.inputTokens, 300)   // 100 × 3
         XCTAssertEqual(ing.summaries().first?.toolCount, 6)
     }
+
+    // Regression: RemoteSync builds a FRESH JSONLTailer every 60s sync and calls scanOnce() directly
+    // (never start()). A fresh instance must still resume from the PERSISTED offsets file, or every
+    // sync re-ingests the whole mirror from byte 0 - the cause of the 3GB DB / 7M duplicate rows /
+    // 100% CPU battery drain. Same file, no new bytes → the second (fresh) tailer must add nothing.
+    func testFreshTailerResumesFromPersistedOffsetsNoReingest() throws {
+        let (db, dir) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: dir) }
+        let projects = dir + "/projects", projA = projects + "/proj-a"
+        try FileManager.default.createDirectory(atPath: projA, withIntermediateDirectories: true)
+        let offsets = dir + "/offsets.json"
+        let line = assistantLine + "\n"
+        try (line + line).write(toFile: projA + "/sess1.jsonl", atomically: true, encoding: .utf8)  // 2 turns
+
+        let ing = SessionIngestor(db: db)
+        JSONLTailer(ingestor: ing, projectsDir: projects, offsetsPath: offsets).scanOnce()
+        XCTAssertEqual(ing.summaries().first?.inputTokens, 200)   // 100 × 2, first sync
+
+        // Second sync: brand-new tailer over the same unchanged file (mirrors RemoteSync.pullSessions).
+        JSONLTailer(ingestor: ing, projectsDir: projects, offsetsPath: offsets).scanOnce()
+        XCTAssertEqual(ing.summaries().first?.inputTokens, 200,   // still 200, NOT 400
+                       "a fresh tailer must load persisted offsets and not re-ingest the whole file")
+        XCTAssertEqual(ing.summaries().first?.toolCount, 4)
+    }
 }
