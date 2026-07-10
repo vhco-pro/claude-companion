@@ -15,6 +15,12 @@ public final class AppModel {
     /// Recent *actionable* decisions (ask/deny/compromised) only - routine `allow`s are the 99%
     /// and aren't actionable, so they'd bury the rows a user can do something about.
     public private(set) var recentDecisions: [AuditRecord] = []
+    /// Confirmation feedback after the user acts on a surfaced decision
+    /// (decision-action-feedback.spec.md). `actionFeedback` is the transient toast (nil = none);
+    /// `actionedDecisions` maps a decision-record id → the action taken, driving the persistent row
+    /// mark. Both are in-memory; the durable truth is the exception written to rules.local.yaml.
+    public private(set) var actionFeedback: ActionFeedback?
+    public private(set) var actionedDecisions: [Int64: DecisionActionKind] = [:]
     public private(set) var attentionCount: Int = 0
     public private(set) var totalDecisions: Int = 0
     public private(set) var autoAccept: Bool = true
@@ -38,6 +44,18 @@ public final class AppModel {
         public let malicious: Bool          // false = compromised
         public var id: String { host }
         public var classLabel: String { malicious ? "malicious" : "compromised" }
+    }
+
+    /// Which action the user took on a decision - drives both the toast copy and the row mark. The
+    /// view maps this to color/icon (as `DecisionRow` already does for a decision tier).
+    public enum DecisionActionKind: String, Sendable { case allow, block }
+
+    /// A one-shot confirmation toast. `id` is monotonic so replacing the toast re-triggers the
+    /// SwiftUI transition and so a stale auto-dismiss timer never clears a newer toast.
+    public struct ActionFeedback: Identifiable, Sendable, Equatable {
+        public let id: Int
+        public let kind: DecisionActionKind
+        public let summary: String
     }
     public private(set) var usage: UsageSnapshot?
     public private(set) var usageError: String?
@@ -99,6 +117,18 @@ public final class AppModel {
         guard let iso, let date = parseISO(iso) else { return nil }
         let f = DateFormatter(); f.dateFormat = "MMM d, HH:mm"
         return f.string(from: date)
+    }
+
+    /// Human one-line label for a decision the user just actioned - shown in the confirmation toast
+    /// and (indirectly) the row mark. The command collapsed to a single spaced line and truncated,
+    /// falling back to the tool name, then `—`. Pure (decision-action-feedback.spec.md).
+    public nonisolated static func actionSummary(_ record: AuditRecord) -> String {
+        if let cmd = record.command?.split(whereSeparator: \.isWhitespace).joined(separator: " "),
+           !cmd.isEmpty {
+            return cmd.count > 60 ? String(cmd.prefix(60)) + "…" : cmd
+        }
+        if let tool = record.tool, !tool.isEmpty { return tool }
+        return "—"
     }
 
     /// Parse an ISO8601 instant tolerating both the plain `…Z` form the hook writes and the
@@ -497,6 +527,7 @@ public final class AppModel {
         if let w = try? rules.addAllowException(tool: scope.tool, commandRegex: scope.pattern) {
             ruleWarnings = w
         }
+        markActioned(record, .allow)
         refresh()
     }
 
@@ -507,8 +538,29 @@ public final class AppModel {
         if let w = try? rules.addDeny(tool: scope.tool, commandRegex: scope.pattern) {
             ruleWarnings = w
         }
+        markActioned(record, .block)
         refresh()
     }
+
+    // MARK: Action feedback (decision-action-feedback.spec.md)
+
+    private var feedbackSeq = 0
+
+    /// Record the row mark for a just-actioned decision and raise its confirmation toast. The row
+    /// mark is keyed by the stable `AuditRecord.id` so it survives the `refresh()` that follows.
+    private func markActioned(_ record: AuditRecord, _ kind: DecisionActionKind) {
+        if let id = record.id { actionedDecisions[id] = kind }
+        feedbackSeq += 1
+        let seq = feedbackSeq
+        actionFeedback = ActionFeedback(id: seq, kind: kind, summary: Self.actionSummary(record))
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if feedbackSeq == seq { actionFeedback = nil }   // a newer toast wins; don't clear it
+        }
+    }
+
+    /// Dismiss the current toast immediately (tap-to-dismiss).
+    public func dismissFeedback() { actionFeedback = nil }
 
     /// Guarded path for a hard `deny`: open the shipped rules.yaml for hand-editing. There is no
     /// silent allow for a deny - the user must consciously edit the rule (see spec).

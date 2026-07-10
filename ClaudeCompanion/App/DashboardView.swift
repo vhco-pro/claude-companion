@@ -33,6 +33,9 @@ struct DashboardView: View {
         }
         .frame(minWidth: 640, minHeight: 440)
         .padding(.top, 4)
+        .overlay(alignment: .top) {
+            ActionFeedbackBanner(model: model).padding(12).frame(maxWidth: 420)
+        }
     }
 
     @ViewBuilder

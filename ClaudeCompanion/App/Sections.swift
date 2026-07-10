@@ -355,6 +355,44 @@ struct ProjectGroupCard: View {
     }
 }
 
+// MARK: - Action feedback toast (decision-action-feedback.spec.md)
+
+// Transient confirmation after Always-allow / Block. Mounted as a top overlay on both the popover
+// and the dashboard so it appears wherever the action was taken. Renders nothing when there's no
+// feedback; the model self-clears it after ~3s and a tap dismisses it immediately.
+struct ActionFeedbackBanner: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Group {
+            if let f = model.actionFeedback {
+                let allow = f.kind == .allow
+                HStack(spacing: 8) {
+                    Image(systemName: allow ? "checkmark.shield.fill" : "xmark.shield.fill")
+                        .foregroundStyle(allow ? .green : .red)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(allow ? "Always allowing" : "Blocking").font(.caption).bold()
+                        Text(f.summary).font(.caption2).lineLimit(1).truncationMode(.middle)
+                        Text("applies on next call").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder((allow ? Color.green : Color.red).opacity(0.4)))
+                .shadow(radius: 4, y: 2)
+                .contentShape(Rectangle())
+                .onTapGesture { model.dismissFeedback() }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .id(f.id)
+            }
+        }
+        .animation(.spring(duration: 0.25), value: model.actionFeedback)
+    }
+}
+
 // MARK: - Decisions (Needs attention)
 
 struct DecisionsList: View {
@@ -399,7 +437,7 @@ struct DecisionsList: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(filtered, id: \.id) { d in
                         VStack(alignment: .leading, spacing: 4) {
-                            DecisionRow(d: d)
+                            DecisionRow(d: d, actioned: d.id.flatMap { model.actionedDecisions[$0] })
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     expandedDecision = (expandedDecision == d.id) ? nil : d.id
@@ -435,16 +473,25 @@ struct DecisionsList: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(spacing: 8) {
-                switch d.decision {
-                case "ask":
-                    Button("Always allow this") { model.alwaysAllow(d); expandedDecision = nil }
-                    Button("Block this") { model.blockThis(d); expandedDecision = nil }
-                case "deny":
-                    Button("Edit deny rule…") { model.editDenyRule() }
-                        .help("Hard denies can't be allowed from here — edit rules.yaml directly, with care.")
-                    Text("can't allow a hard deny").font(.caption2).foregroundStyle(.secondary)
-                default:
-                    Text("already allowed").font(.caption2).foregroundStyle(.secondary)
+                // Already actioned this session - show the outcome, not the buttons (you can't
+                // re-allow what you just allowed). The exception applies on the hook's next call.
+                if let kind = d.id.flatMap({ model.actionedDecisions[$0] }) {
+                    Label(kind == .allow ? "Now always-allowed · applies on next call"
+                                         : "Now blocked · applies on next call",
+                          systemImage: "checkmark")
+                        .font(.caption2).foregroundStyle(kind == .allow ? .green : .red)
+                } else {
+                    switch d.decision {
+                    case "ask":
+                        Button("Always allow this") { model.alwaysAllow(d); expandedDecision = nil }
+                        Button("Block this") { model.blockThis(d); expandedDecision = nil }
+                    case "deny":
+                        Button("Edit deny rule…") { model.editDenyRule() }
+                            .help("Hard denies can't be allowed from here — edit rules.yaml directly, with care.")
+                        Text("can't allow a hard deny").font(.caption2).foregroundStyle(.secondary)
+                    default:
+                        Text("already allowed").font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             }
             .font(.caption)
@@ -455,6 +502,9 @@ struct DecisionsList: View {
 
 struct DecisionRow: View {
     let d: AuditRecord
+    /// Set once the user has allowed/blocked this row (decision-action-feedback.spec.md); swaps the
+    /// trailing tier label for an outcome badge so a later glance still shows what was done.
+    var actioned: AppModel.DecisionActionKind? = nil
 
     private var color: Color {
         switch d.decision {
@@ -479,7 +529,13 @@ struct DecisionRow: View {
             Image(systemName: icon).foregroundStyle(color).font(.caption2)
             Text(oneLine).font(.caption).lineLimit(1).truncationMode(.middle)
             Spacer()
-            Text(d.decision).font(.caption2).foregroundStyle(color)
+            if let actioned {
+                Label(actioned == .allow ? "allowed" : "blocked", systemImage: "checkmark")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption2).foregroundStyle(actioned == .allow ? .green : .red)
+            } else {
+                Text(d.decision).font(.caption2).foregroundStyle(color)
+            }
         }
     }
 }

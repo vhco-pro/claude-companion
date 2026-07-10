@@ -39,6 +39,9 @@ struct PanelView: View {
         }
         .padding(12)
         .frame(width: 300)
+        .overlay(alignment: .top) {
+            ActionFeedbackBanner(model: model).padding(12)
+        }
     }
 
     private var header: some View {
