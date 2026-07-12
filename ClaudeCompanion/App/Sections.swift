@@ -59,6 +59,14 @@ struct UsageSection: View {
                     if let s = u.sevenDaySonnet?.utilization { Text("sonnet 7d \(Int(s))%") }
                     if let o = u.sevenDayOpus?.utilization { Text("opus 7d \(Int(o))%") }
                 }.font(.caption2).foregroundStyle(.secondary)
+                // Freshness line - so a wedged/failed refresh shows itself instead of the bars
+                // silently serving last-good numbers as if current (usage-refresh-resilience.spec).
+                if let at = model.usageUpdatedAt {
+                    HStack(spacing: 4) {
+                        Text("updated \(AppModel.relative(at))")
+                        if model.usageStale { Text("⚠️ stale").foregroundStyle(.orange) }
+                    }.font(.caption2).foregroundStyle(.secondary)
+                }
             } else {
                 Text(model.usageSignedOut ? "Sign in via Claude Code"
                      : (model.usageError.map { "Usage unavailable (\($0)) - retrying" } ?? "Usage: loading…"))

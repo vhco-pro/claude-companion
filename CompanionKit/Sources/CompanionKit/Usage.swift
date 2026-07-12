@@ -36,8 +36,19 @@ public final class UsageClient {
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         req.timeoutInterval = 20
+        // A fresh, hard-bounded session per fetch. `URLSession.shared` can wedge (a half-open
+        // connection to this host froze usage for ~2 days once while every other timer kept
+        // running); an ephemeral session with a resource cap can't hang past 30s, so the next
+        // 120s tick self-heals. waitsForConnectivity=false → fail fast offline, don't queue.
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 20
+        cfg.timeoutIntervalForResource = 30
+        cfg.waitsForConnectivity = false
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        let session = URLSession(configuration: cfg)
+        defer { session.finishTasksAndInvalidate() }
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await session.data(for: req)
             if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 return .failure(.http(http.statusCode))
             }

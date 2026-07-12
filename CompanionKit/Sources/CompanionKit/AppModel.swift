@@ -60,7 +60,20 @@ public final class AppModel {
     public private(set) var usage: UsageSnapshot?
     public private(set) var usageError: String?
     public private(set) var usageSignedOut: Bool = false   // true only when there's no token
+    /// When the last *successful* usage fetch landed. Drives `usageStale` so a wedged/failed refresh
+    /// shows itself instead of serving last-good numbers as if fresh (usage-refresh-resilience.spec).
+    public private(set) var usageUpdatedAt: Date?
     public private(set) var status: String = "starting…"
+
+    /// Usage poll cadence; also the base for the staleness threshold.
+    public static let usageRefreshInterval: TimeInterval = 120
+
+    /// Stale if we have bars but the last success is older than 2× the poll interval. Mirrors
+    /// `blocklistStale`; guard nil → not stale (nothing to render yet).
+    public var usageStale: Bool {
+        guard usage != nil, let at = usageUpdatedAt else { return false }
+        return Date().timeIntervalSince(at) > Self.usageRefreshInterval * 2
+    }
 
     /// Menu-bar SF Symbol (filled = auto-accept on). Used in the bar + the panel header.
     public var menuBarIcon: String { autoAccept ? "bolt.shield.fill" : "bolt.shield" }
@@ -221,12 +234,14 @@ public final class AppModel {
         }
 
         usage = loadUsage()   // last-good across relaunches so the bars don't blank on a 429
+        usageUpdatedAt = usage != nil ? fileModified(usagePath) : nil   // seed age from the cache file
         refreshUsageNow()
         // These callbacks fire off the main actor (timers, file-watch, hot-key, wake/network);
         // AppModel is @MainActor, so each hops back to the main actor before touching state.
-        usageTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
+        usageTimer = Timer.scheduledTimer(withTimeInterval: Self.usageRefreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshUsageNow() }
         }
+        startConnectivityRefresh()   // wake + network recovery re-fetch (usage always; blocklist if on)
         watcher = FileWatcher(paths: [Paths.configDir]) { [weak self] in
             Task { @MainActor in self?.onConfigDirChanged() }
         }
@@ -245,24 +260,6 @@ public final class AppModel {
             blocklistTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(minutes * 60), repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.refreshBlocklistNow() }
             }
-            // Re-fetch on wake-from-sleep and when the network comes back, so a closed laptop
-            // doesn't sit on a stale list for up to a full interval.
-            NSWorkspace.shared.notificationCenter.addObserver(
-                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-            ) { [weak self] _ in Task { @MainActor in self?.refreshBlocklistNow() } }
-            netMonitor.pathUpdateHandler = { [weak self] path in
-                let satisfied = path.status == .satisfied   // capture Sendable value, then hop to main
-                Task { @MainActor in
-                    guard let self else { return }
-                    if satisfied, self.wasOffline {
-                        self.wasOffline = false
-                        self.refreshBlocklistNow()
-                    } else if !satisfied {
-                        self.wasOffline = true
-                    }
-                }
-            }
-            netMonitor.start(queue: DispatchQueue(label: "pro.vhco.companion.net"))
         }
 
         // Remote-SSH: load registered hosts, do an initial pull, then poll on a slow timer + wake.
@@ -321,6 +318,7 @@ public final class AppModel {
                 switch result {
                 case .success(let snap):
                     self.usage = snap; self.usageError = nil; self.usageSignedOut = false
+                    self.usageUpdatedAt = Date()
                     self.saveUsage(snap)
                 case .failure(let f):
                     self.usageError = Self.describe(f)        // keep last-good `usage`
@@ -337,6 +335,36 @@ public final class AppModel {
     private func loadUsage() -> UsageSnapshot? {
         guard let d = FileManager.default.contents(atPath: usagePath) else { return nil }
         return try? JSONDecoder().decode(UsageSnapshot.self, from: d)
+    }
+
+    /// Re-fetch time-sensitive data when the machine wakes or the network returns, so a closed laptop
+    /// or a dropped link doesn't leave usage frozen until the next slow timer. Usage always; the
+    /// blocklist only when enabled. Registered once at startup, independent of blocklist config -
+    /// the wake/net refresh used to live inside the blocklist block and skipped usage entirely.
+    private func startConnectivityRefresh() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshUsageNow()
+                if self.config.blocklist.enabled { self.refreshBlocklistNow() }
+            }
+        }
+        netMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied   // capture Sendable value, then hop to main
+            Task { @MainActor in
+                guard let self else { return }
+                if satisfied, self.wasOffline {
+                    self.wasOffline = false
+                    self.refreshUsageNow()
+                    if self.config.blocklist.enabled { self.refreshBlocklistNow() }
+                } else if !satisfied {
+                    self.wasOffline = true
+                }
+            }
+        }
+        netMonitor.start(queue: DispatchQueue(label: "pro.vhco.companion.net"))
     }
 
     public func toolBreakdown(_ sessionId: String) -> [(tool: String, count: Int)] {
