@@ -1,6 +1,9 @@
 # Claude Companion — default blacklist (shipped). See
 # docs/specs/features/default-blacklist.reference.md for rationale + sources.
-# Two tiers: deny = hard block (catastrophic/irreversible); ask = prompt the human.
+# Tiers: deny = hard block (catastrophic/irreversible, NOT overridable); confirm = serious-but-
+# reversible, held for explicit human approval (compiles to a prompt); ask = routine prompt.
+# A deny tagged `remote_overridable: true` softens to confirm when the command runs on a remote
+# host (aws ssm / ssh) — see human-override-remote-awareness.spec.md.
 # Everything not listed auto-allows. Edit this file; the app recompiles it for the hook.
 # macOS-targeted. Pattern-blocking is accident-prevention, not a security boundary.
 
@@ -31,15 +34,15 @@ deny:
   - { tool: Bash, command_regex: '\bchmod\s+(?:-[a-zA-Z]*\s+)*0?777\s+(?:-[a-zA-Z]*\s+)*(?:/|~|\$HOME|/\*)\s*$' }
   - { tool: Bash, command_regex: '\bchmod\s+(?:-[a-zA-Z]*\s+)*-R\s+\S+\s+(?:/|~|\$HOME|/\*)\s*$' }
   - { tool: Bash, command_regex: '\bchown\s+(?:-[a-zA-Z]*\s+)*-R\s+\S+\s+(?:/|~|\$HOME|/\*)\s*$' }
-  # Writes into system trees
-  - { tool: Bash, command_regex: '>>?\s*/(?:etc|usr|bin|sbin|System|Library)(?:/|\s|$)' }
   # Pipe-to-shell / RCE. Scope [^|;&\n] keeps the downloader and the `| sh` in the SAME command
   # segment (so a benign `git fetch …; … | bash local.sh` doesn't trip it); `fetch` dropped because
   # it matched `git fetch` and isn't a real macOS downloader (curl/wget cover the threat).
-  - { tool: Bash, command_regex: '\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+)?(?:ba|z|da|k|fi|t?c)?sh\b' }
-  - { tool: Bash, command_regex: '\b(?:ba|z|da|k|c)?sh\b\s+<\(\s*(?:curl|wget|fetch)\b' }
-  - { tool: Bash, command_regex: '\b(?:base64\s+(?:-[dD]|--decode)|xxd\s+-r|openssl\s+(?:base64|enc)\b[^|]*-d)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b' }
-  - { tool: Bash, command_regex: '\beval\b[^|;&]*\$\(\s*(?:curl|wget|fetch)\b' }
+  # `remote_overridable`: locally these are hard-denied; when the SAME construct runs on a remote
+  # host via ssm/ssh (deploying/bootstrapping the user's own box) it softens to a human checkpoint.
+  - { tool: Bash, command_regex: '\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+)?(?:ba|z|da|k|fi|t?c)?sh\b', remote_overridable: true }
+  - { tool: Bash, command_regex: '\b(?:ba|z|da|k|c)?sh\b\s+<\(\s*(?:curl|wget|fetch)\b', remote_overridable: true }
+  - { tool: Bash, command_regex: '\b(?:base64\s+(?:-[dD]|--decode)|xxd\s+-r|openssl\s+(?:base64|enc)\b[^|]*-d)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b', remote_overridable: true }
+  - { tool: Bash, command_regex: '\beval\b[^|;&]*\$\(\s*(?:curl|wget|fetch)\b', remote_overridable: true }
   - { tool: Bash, command_regex: '/dev/(?:tcp|udp)/' }
   # Write-tool denies (path-based)
   - { tool: Write, path_glob: '/etc/**' }
@@ -47,6 +50,15 @@ deny:
   - { tool: Write, path_glob: '/usr/**' }
   - { tool: Write, path_glob: '{/,~/}Library/Launch{Agents,Daemons}/**' }
   - { tool: Write, path_glob: '/private/etc/**' }
+
+# confirm = serious but reversible: hard-stop the model, require an explicit human approval each
+# time (compiles to a prompt the model can never self-approve). The overridable middle ground
+# between deny and ask.
+confirm:
+  # System-tree writes via a Bash redirect (config/unit files, frequently on a REMOTE host via
+  # ssm/ssh). A human approves each. NOTE: the Write-tool path denies for /etc,/usr,/System and any
+  # /etc/sudoers edit stay HARD-denied above; only the Bash `>`/`>>` redirect lands here.
+  - { tool: Bash, command_regex: '>>?\s*/(?:etc|usr|bin|sbin|System|Library)(?:/|\s|$)' }
 
 ask:
   # Privilege escalation

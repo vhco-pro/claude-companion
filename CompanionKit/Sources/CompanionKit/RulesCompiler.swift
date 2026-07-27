@@ -44,18 +44,23 @@ public enum RulesCompiler {
                     warnings.append("\(tier): invalid regex skipped - \(rx)")
                     return nil
                 }
-                return Rule(tool: spec.tool, commandRegex: spec.commandRegex, pathGlob: spec.pathGlob)
+                return Rule(tool: spec.tool, commandRegex: spec.commandRegex, pathGlob: spec.pathGlob,
+                            remoteOverridable: spec.remoteOverridable)
             }
         }
 
+        // `disabled` turns off matching base ASK and CONFIRM rules (both are human-prompt tiers); a
+        // base hard `deny` is never removed by the local file (see docstring).
         let disabledSet = Set(local.disabled)
         let baseAsk = base.ask.filter { !disabledSet.contains($0.identity) }
+        let baseConfirm = base.confirm.filter { !disabledSet.contains($0.identity) }
 
         let compiled = CompiledRules(
             autoAccept: base.autoAccept,
             deny: convert(base.deny, tier: "deny") + convert(local.deny, tier: "local deny"),
             ask: convert(baseAsk, tier: "ask") + convert(local.ask, tier: "local ask"),
-            allow: convert(mergedAllow, tier: "allow")
+            allow: convert(mergedAllow, tier: "allow"),
+            confirm: convert(baseConfirm, tier: "confirm") + convert(local.confirm, tier: "local confirm")
         )
         return Result(compiled: compiled, warnings: warnings)
     }
