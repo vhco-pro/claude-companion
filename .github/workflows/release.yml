@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Mint a homebrew-tap-scoped token (vhco-release-bot)
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.VHCO_RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.VHCO_RELEASE_BOT_PRIVATE_KEY }}
@@ -72,7 +72,7 @@ jobs:
       SDK_URL: "https://download.swift.org/swift-6.2.3-release/static-sdk/swift-6.2.3-RELEASE/swift-6.2.3-RELEASE_static-linux-0.0.1.artifactbundle.tar.gz"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install swiftly + pinned Swift toolchain
         run: |
