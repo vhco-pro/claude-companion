@@ -1,0 +1,50 @@
+# Generated from vhco-pro/.github workflow-templates/codeql-swift.yml
+#
+# CodeQL code scanning. Advanced setup (not code scanning's default setup)
+# because the Swift sources only compile after `xcodegen generate` recreates the
+# gitignored ClaudeCompanion.xcodeproj — CodeQL's autobuild has nothing to build
+# otherwise. Both jobs delegate to the org-wide reusables in vhco-pro/.github.
+
+name: CodeQL
+
+# The Swift analysis does a clean build of the whole CompanionKit dependency
+# graph on a macOS runner, so it runs on PRs to main plus a weekly schedule
+# rather than on every push: code reaches main via PR, which is already scanned,
+# and the schedule keeps the default-branch baseline fresh.
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '41 4 * * 2' # weekly, Tuesday 04:41 UTC
+  workflow_dispatch:
+
+# Least-privilege at top level; each job raises only what it needs. A called
+# workflow can never hold more than the calling job grants here.
+permissions: {}
+
+jobs:
+  swift:
+    name: Swift
+    # macOS runners are free for public repos but billed at a premium on private
+    # ones, so the scan stops if this repo ever flips visibility.
+    if: ${{ github.event.repository.visibility == 'public' }}
+    uses: vhco-pro/.github/.github/workflows/reusable-codeql-swift.yml@dd6b08eef6ffec61eeffa3d3b2f28f91658403f1 # main
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    with:
+      # Tahoe → ships Xcode 26, needed to compile the AppIcon.icon. Kept in
+      # lockstep with the runner in release.yml and ci.yml.
+      runner: macos-26
+      project: ClaudeCompanion.xcodeproj
+      scheme: ClaudeCompanion
+      package-resolved: CompanionKit/Package.resolved
+
+  actions:
+    name: Actions
+    uses: vhco-pro/.github/.github/workflows/reusable-codeql-actions.yml@dd6b08eef6ffec61eeffa3d3b2f28f91658403f1 # main
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
